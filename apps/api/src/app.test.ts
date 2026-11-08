@@ -1,14 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildApp, type Deps } from './app.ts';
-
-const testConfig = {
-  NODE_ENV: 'test',
-  PORT: 0,
-  LOG_LEVEL: 'fatal',
-  WEB_ORIGIN: 'http://localhost:5173',
-  DATABASE_URL: 'postgres://u:p@localhost:5432/db',
-} as const;
+import { testConfig } from './test/config.ts';
 
 // Fake databases: just enough of the Db type for /health.
 const healthyDb = { query: async () => ({ rows: [{ '?column?': 1 }] }) } as unknown as Deps['db'];
@@ -19,7 +12,7 @@ const brokenDb = {
 } as unknown as Deps['db'];
 
 test('GET /health returns 200 when the database answers', async () => {
-  const app = await buildApp(testConfig, { db: healthyDb });
+  const app = await buildApp(testConfig(), { db: healthyDb });
   const res = await app.inject({ method: 'GET', url: '/health' });
 
   assert.equal(res.statusCode, 200);
@@ -29,7 +22,7 @@ test('GET /health returns 200 when the database answers', async () => {
 });
 
 test('GET /health returns 503 when the database is down', async () => {
-  const app = await buildApp(testConfig, { db: brokenDb });
+  const app = await buildApp(testConfig(), { db: brokenDb });
   const res = await app.inject({ method: 'GET', url: '/health' });
 
   assert.equal(res.statusCode, 503);

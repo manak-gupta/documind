@@ -3,7 +3,9 @@ import cookie from '@fastify/cookie';
 import type { Config } from './config.ts';
 import type { Db } from './db/pool.ts';
 import { registerErrorHandler } from './http/errors.ts';
+import multipart from '@fastify/multipart';
 import { registerAuth } from './auth/routes.ts';
+import { documentRoutes } from './documents/routes.ts';
 
 // Everything the app needs from the outside world is passed in here ("dependency injection").
 // Production passes a real Postgres pool; tests pass a fake or a test database.
@@ -22,7 +24,10 @@ export async function buildApp(config: Config, deps: Deps) {
 
   registerErrorHandler(app);
   await app.register(cookie);
+  await app.register(multipart);
   await registerAuth(app, { config, db: deps.db });
+  // Registered as an encapsulated plugin on purpose: its requireAuth hook applies to its routes only.
+  await app.register(documentRoutes, { config, db: deps.db });
 
   // Health check for Docker / the load balancer.
   // 503 tells them "this instance can't serve traffic right now" (here: DB unreachable).

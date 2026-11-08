@@ -4,15 +4,8 @@ import assert from 'node:assert/strict';
 import type pg from 'pg';
 import { buildApp } from '../app.ts';
 import { createTestDb, uniqueEmail } from '../test/db.ts';
+import { testConfig } from '../test/config.ts';
 import { SESSION_COOKIE } from './sessions.ts';
-
-const config = {
-  NODE_ENV: 'test',
-  PORT: 0,
-  LOG_LEVEL: 'fatal',
-  WEB_ORIGIN: 'http://localhost:5173',
-  DATABASE_URL: 'unused-in-tests',
-} as const;
 
 describe('auth', () => {
   let pool: pg.Pool;
@@ -20,7 +13,7 @@ describe('auth', () => {
 
   before(async () => {
     pool = await createTestDb();
-    app = await buildApp(config as never, { db: pool });
+    app = await buildApp(testConfig(), { db: pool });
   });
   after(async () => {
     await app.close();
