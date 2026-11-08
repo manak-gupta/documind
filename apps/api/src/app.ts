@@ -8,7 +8,9 @@ import { registerAuth } from './auth/routes.ts';
 import { documentRoutes } from './documents/routes.ts';
 import { type DocumentEvents, noEvents } from './documents/events.ts';
 import type { Embedder } from './llm/embedder.ts';
-import { createEmbedder } from './llm/factory.ts';
+import { createEmbedder, createLlm } from './llm/factory.ts';
+import type { LlmProvider } from './llm/provider.ts';
+import { chatRoutes } from './chat/routes.ts';
 import { searchRoutes } from './retrieval/routes.ts';
 
 // Everything the app needs from the outside world is passed in here ("dependency injection").
@@ -17,6 +19,7 @@ export interface Deps {
   db: Db;
   events?: DocumentEvents; // live ingestion updates; optional so simple tests can skip it
   embedder?: Embedder;     // defaults to the one LLM_PROVIDER selects
+  llm?: LlmProvider;       // likewise
 }
 
 // buildApp creates the server WITHOUT starting it.
@@ -34,7 +37,11 @@ export async function buildApp(config: Config, deps: Deps) {
   await registerAuth(app, { config, db: deps.db });
   // Registered as an encapsulated plugin on purpose: its requireAuth hook applies to its routes only.
   await app.register(documentRoutes, { config, db: deps.db, events: deps.events ?? noEvents });
-  await app.register(searchRoutes, { db: deps.db, embedder: deps.embedder ?? createEmbedder(config) });
+  const embedder = deps.embedder ?? createEmbedder(config);
+  await app.register(searchRoutes, { db: deps.db, embedder });
+  await app.register(chatRoutes, {
+    db: deps.db, embedder, llm: deps.llm ?? createLlm(config), abstainSimilarity: config.ABSTAIN_SIMILARITY,
+  });
 
   // Health check for Docker / the load balancer.
   // 503 tells them "this instance can't serve traffic right now" (here: DB unreachable).

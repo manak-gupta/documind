@@ -25,6 +25,14 @@ export interface RetryOptions {
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
 
 export async function fetchJsonWithRetry<T>(url: string, init: RequestInit, opts: RetryOptions = {}): Promise<T> {
+  return (await (await fetchWithRetry(url, init, opts)).json()) as T;
+}
+
+// Returns the successful Response without reading its body, so callers can stream it.
+// Retries only happen BEFORE the body starts: once tokens are flowing to a user,
+// silently restarting the answer would duplicate text.
+export async function fetchWithRetry(url: string, init: RequestInit, opts: RetryOptions = {}): Promise<Response> {
+  const callerSignal = init.signal ?? undefined; // DOM typings allow null here
   const {
     retries = 4,
     baseDelayMs = 1_000,
@@ -36,15 +44,17 @@ export async function fetchJsonWithRetry<T>(url: string, init: RequestInit, opts
   for (let attempt = 0; ; attempt++) {
     let res: Response;
     try {
-      res = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+      // Abort on timeout OR when the caller cancels (e.g. the user closed the tab).
+      const signals = [AbortSignal.timeout(timeoutMs), ...(callerSignal ? [callerSignal] : [])];
+      res = await fetchImpl(url, { ...init, signal: AbortSignal.any(signals) });
     } catch (err) {
-      // Network failure or timeout.
-      if (attempt >= retries) throw err;
+      // Network failure or timeout. A deliberate cancel is never retried.
+      if (callerSignal?.aborted || attempt >= retries) throw err;
       await sleep(backoff(attempt, baseDelayMs));
       continue;
     }
 
-    if (res.ok) return (await res.json()) as T;
+    if (res.ok) return res;
 
     const body = await res.text();
     if (!RETRYABLE.has(res.status) || attempt >= retries) {

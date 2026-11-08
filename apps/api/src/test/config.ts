@@ -18,6 +18,10 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     GEMINI_API_KEY: undefined,
     EMBEDDING_MODEL: 'fake-hash-embedder',
     EMBEDDING_DIM: 768,
+    LLM_MODEL: 'fake-model',
+    LLM_FAST_MODEL: 'fake-model',
+    LLM_THINKING: 'off',
+    ABSTAIN_SIMILARITY: 0.05, // fake embeddings have low similarities; tests set it when testing abstention
     ...overrides,
   };
 }

@@ -6,6 +6,7 @@ import type { Db } from '../db/pool.ts';
 import { requireAuth } from '../auth/routes.ts';
 import { HttpError } from '../http/errors.ts';
 import { deleteFile, filePath, saveUpload } from '../storage/files.ts';
+import { openSse } from '../http/sse.ts';
 import type { DocumentEvents } from './events.ts';
 
 const IdParams = z.object({ id: z.uuid() });
@@ -88,31 +89,13 @@ export async function documentRoutes(
     return { documents: rows };
   });
 
-  // Live ingestion progress via Server-Sent Events: a long-lived HTTP response the server
-  // keeps writing to. One-way (server -> browser) is all we need, and unlike WebSockets it's
-  // plain HTTP, so it passes through proxies and Cloudflare, and browsers auto-reconnect.
+  // Live ingestion progress via Server-Sent Events (see http/sse.ts).
   app.get('/documents/events', async (req, reply) => {
-    reply.hijack(); // we write the raw response ourselves; Fastify must not end it
-    const res = reply.raw;
-    res.writeHead(200, {
-      'content-type': 'text/event-stream; charset=utf-8',
-      'cache-control': 'no-cache, no-transform',
-      connection: 'keep-alive',
-      'x-accel-buffering': 'no', // tell reverse proxies not to buffer the stream
-    });
-    res.write('retry: 3000\n\n'); // browser reconnect delay if the connection drops
-
+    const sse = openSse(reply);
     const unsubscribe = events.subscribe(req.user!.id, ({ userId: _omit, ...event }) => {
-      res.write(`event: document\ndata: ${JSON.stringify(event)}\n\n`);
+      sse.send('document', event);
     });
-    // Proxies (and Cloudflare, after 100 s) close connections that look idle.
-    // A comment line every 15 s keeps it open and costs a few bytes.
-    const heartbeat = setInterval(() => res.write(': ping\n\n'), 15_000);
-
-    req.raw.on('close', () => {
-      clearInterval(heartbeat);
-      unsubscribe();
-    });
+    sse.onClose(unsubscribe);
   });
 
   app.get('/documents/:id/file', async (req, reply) => {
