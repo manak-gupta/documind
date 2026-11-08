@@ -14,6 +14,17 @@ const EnvSchema = z.object({
   UPLOAD_DIR: z.string().default('./data/uploads'),
   MAX_UPLOAD_MB: z.coerce.number().int().min(1).max(100).default(25),
   MAX_DOCS_PER_USER: z.coerce.number().int().min(1).default(20),
+
+  // AI provider. "fake" = offline deterministic embeddings, for tests and local hacking.
+  LLM_PROVIDER: z.enum(['gemini', 'fake']).default('gemini'),
+  GEMINI_API_KEY: z.string().optional(),
+  EMBEDDING_MODEL: z.string().default('gemini-embedding-2'),
+  // Must match the vector(N) column; the worker checks this against the database at startup.
+  EMBEDDING_DIM: z.coerce.number().int().default(768),
+}).superRefine((env, ctx) => {
+  if (env.LLM_PROVIDER === 'gemini' && !env.GEMINI_API_KEY) {
+    ctx.addIssue({ code: 'custom', path: ['GEMINI_API_KEY'], message: 'Required when LLM_PROVIDER=gemini' });
+  }
 });
 
 export type Config = z.infer<typeof EnvSchema>;

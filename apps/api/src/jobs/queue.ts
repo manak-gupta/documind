@@ -36,11 +36,14 @@ export async function completeJob(db: Db, jobId: number): Promise<void> {
   await db.query(`UPDATE jobs SET status = 'done', locked_at = NULL WHERE id = $1`, [jobId]);
 }
 
+// Throw this from a handler when retrying can't help (e.g. a scanned PDF has no text).
+export class PermanentJobError extends Error {}
+
 // Retry with exponential backoff (10 s, 20 s, 40 s, ...) until max_attempts, then give up.
 // Backoff matters for rate-limited APIs: retrying instantly just hits the same limit again.
 export async function failJob(db: Db, job: Job, error: unknown): Promise<{ willRetry: boolean }> {
   const message = error instanceof Error ? error.message : String(error);
-  const willRetry = job.attempts < job.max_attempts;
+  const willRetry = !(error instanceof PermanentJobError) && job.attempts < job.max_attempts;
   await db.query(
     `UPDATE jobs
         SET status = $2,

@@ -14,6 +14,10 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     UPLOAD_DIR: mkdtempSync(join(tmpdir(), 'documind-test-')),
     MAX_UPLOAD_MB: 5,
     MAX_DOCS_PER_USER: 20,
+    LLM_PROVIDER: 'fake',
+    GEMINI_API_KEY: undefined,
+    EMBEDDING_MODEL: 'fake-hash-embedder',
+    EMBEDDING_DIM: 768,
     ...overrides,
   };
 }

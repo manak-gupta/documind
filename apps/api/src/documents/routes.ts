@@ -6,6 +6,7 @@ import type { Db } from '../db/pool.ts';
 import { requireAuth } from '../auth/routes.ts';
 import { HttpError } from '../http/errors.ts';
 import { deleteFile, filePath, saveUpload } from '../storage/files.ts';
+import type { DocumentEvents } from './events.ts';
 
 const IdParams = z.object({ id: z.uuid() });
 
@@ -16,8 +17,11 @@ const DOC_COLUMNS = `id, title, filename, size_bytes AS "sizeBytes", page_count 
 const titleFromFilename = (name: string) =>
   name.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Untitled';
 
-export async function documentRoutes(app: FastifyInstance, opts: { config: Config; db: Db }) {
-  const { config, db } = opts;
+export async function documentRoutes(
+  app: FastifyInstance,
+  opts: { config: Config; db: Db; events: DocumentEvents },
+) {
+  const { config, db, events } = opts;
   const maxBytes = config.MAX_UPLOAD_MB * 1024 * 1024;
 
   app.addHook('preHandler', requireAuth); // every route in this file needs a logged-in user
@@ -82,6 +86,33 @@ export async function documentRoutes(app: FastifyInstance, opts: { config: Confi
     const { rows } = await db.query(
       `SELECT ${DOC_COLUMNS} FROM documents WHERE user_id = $1 ORDER BY created_at DESC`, [req.user!.id]);
     return { documents: rows };
+  });
+
+  // Live ingestion progress via Server-Sent Events: a long-lived HTTP response the server
+  // keeps writing to. One-way (server -> browser) is all we need, and unlike WebSockets it's
+  // plain HTTP, so it passes through proxies and Cloudflare, and browsers auto-reconnect.
+  app.get('/documents/events', async (req, reply) => {
+    reply.hijack(); // we write the raw response ourselves; Fastify must not end it
+    const res = reply.raw;
+    res.writeHead(200, {
+      'content-type': 'text/event-stream; charset=utf-8',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+      'x-accel-buffering': 'no', // tell reverse proxies not to buffer the stream
+    });
+    res.write('retry: 3000\n\n'); // browser reconnect delay if the connection drops
+
+    const unsubscribe = events.subscribe(req.user!.id, ({ userId: _omit, ...event }) => {
+      res.write(`event: document\ndata: ${JSON.stringify(event)}\n\n`);
+    });
+    // Proxies (and Cloudflare, after 100 s) close connections that look idle.
+    // A comment line every 15 s keeps it open and costs a few bytes.
+    const heartbeat = setInterval(() => res.write(': ping\n\n'), 15_000);
+
+    req.raw.on('close', () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    });
   });
 
   app.get('/documents/:id/file', async (req, reply) => {
