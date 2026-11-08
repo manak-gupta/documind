@@ -1,15 +1,18 @@
 import { loadConfig } from './config.ts';
 import { buildApp } from './app.ts';
+import { createPool } from './db/pool.ts';
 
 const config = loadConfig();
-const app = buildApp(config);
+const pool = createPool(config.DATABASE_URL);
+const app = buildApp(config, { db: pool });
 
 // Docker stops containers with SIGTERM; Ctrl+C sends SIGINT.
-// app.close() stops accepting new connections and lets in-flight requests finish.
+// Order matters: stop taking requests and finish in-flight ones first, then close DB connections.
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.once(signal, async () => {
     app.log.info({ signal }, 'shutting down');
     await app.close();
+    await pool.end();
     process.exit(0);
   });
 }
