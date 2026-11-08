@@ -55,10 +55,26 @@ export async function parsePdf(data: Uint8Array): Promise<ParsedPdf> {
       pages.push({ pageNumber: n, lines });
     }
 
-    return { title: info?.Title?.trim() || null, pageCount: pdf.numPages, pages, scannedPages };
+    return {
+      title: info?.Title?.trim() || guessTitle(pages[0]),
+      pageCount: pdf.numPages,
+      pages,
+      scannedPages,
+    };
   } finally {
     await task.destroy(); // releases the parser's memory and worker even if parsing failed
   }
+}
+
+// Many PDFs (arXiv papers, exported docs) have no metadata title. The largest text on
+// page 1 is almost always the real title, as long as it's bigger than the rest of the page.
+function guessTitle(firstPage: ParsedPage | undefined): string | null {
+  if (!firstPage?.lines.length) return null;
+  const sizes = firstPage.lines.map((l) => l.fontSize);
+  const max = Math.max(...sizes);
+  if (max <= Math.min(...sizes)) return null; // everything the same size: no visible title
+  const title = firstPage.lines.find((l) => l.fontSize === max)!.text;
+  return title.length >= 3 && title.length <= 200 ? title : null;
 }
 
 interface TextItem {
@@ -77,7 +93,8 @@ function toLines(items: TextItem[]): Line[] {
   let lastY: number | null = null;
 
   const flush = () => {
-    const clean = text.replace(/\s+/g, ' ').trim();
+    // Some PDFs contain NUL characters, which Postgres text columns reject outright.
+    const clean = text.replace(/\u0000/g, '').replace(/\s+/g, ' ').trim();
     if (clean) lines.push({ text: clean, fontSize: Math.round(fontSize * 10) / 10 });
     text = '';
     fontSize = 0;

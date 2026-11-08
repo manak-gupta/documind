@@ -35,6 +35,14 @@ test('extracts text per page with page numbers, font sizes and the metadata titl
   assert.equal(parsed.pages[1]!.lines[0]?.text, 'Outlook');
 });
 
+test('without metadata, the largest text on page 1 becomes the title', async () => {
+  const pdf = makePdf([[{ text: 'Attention Is All You Need', size: 17 }, { text: 'Body text of the paper goes here.' }]]);
+  assert.equal((await parsePdf(new Uint8Array(pdf))).title, 'Attention Is All You Need');
+
+  const plain = makePdf([[{ text: 'Every line is the same size.' }, { text: 'So there is no visible title.' }]]);
+  assert.equal((await parsePdf(new Uint8Array(plain))).title, null);
+});
+
 test('pages without a text layer are reported as scanned', async () => {
   const pdf = makePdf([[{ text: 'This page has plenty of real, extractable text on it.' }], []]);
   const parsed = await parsePdf(new Uint8Array(pdf));

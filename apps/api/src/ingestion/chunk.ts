@@ -13,6 +13,7 @@ export interface ChunkOptions {
   targetTokens?: number;  // aim for chunks about this big
   overlapTokens?: number; // repeat this much of the previous chunk at the start of the next
   maxTokens?: number;     // hard ceiling; longer "sentences" (tables, lists) are split by words
+  minTokens?: number;     // smaller fragments are merged into a neighbour
 }
 
 // ~4 characters per token is the usual estimate for English. Exact counts would need the
@@ -93,7 +94,37 @@ export function chunkPages(pages: ParsedPage[], opts: ChunkOptions = {}): Chunk[
     }
   }
   emit();
-  return chunks;
+  return mergeTinyChunks(chunks, opts.minTokens ?? 40);
+}
+
+// Real PDFs produce fragments: figure labels, a heading followed straight by another heading,
+// a one-line footer. On their own they're noise that can outrank real passages in search.
+// Fold each tiny chunk into the next one (or the previous one, if it's the last).
+function mergeTinyChunks(chunks: Chunk[], minTokens: number): Chunk[] {
+  const out: Chunk[] = [];
+  let carry: Chunk | null = null;
+
+  for (const chunk of chunks) {
+    let c = chunk;
+    if (carry) {
+      const content = `${carry.content} ${c.content}`;
+      c = { ...c, pageStart: Math.min(carry.pageStart, c.pageStart), content, tokenCount: estimateTokens(content) };
+      carry = null;
+    }
+    if (c.tokenCount < minTokens) carry = c;
+    else out.push(c);
+  }
+
+  if (carry) {
+    const prev = out.pop();
+    if (prev) {
+      const content = `${prev.content} ${carry.content}`;
+      out.push({ ...prev, pageEnd: Math.max(prev.pageEnd, carry.pageEnd), content, tokenCount: estimateTokens(content) });
+    } else {
+      out.push(carry); // the whole document is tiny: keep it rather than lose it
+    }
+  }
+  return out.map((c, i) => ({ ...c, ordinal: i }));
 }
 
 // The text that gets embedded: the chunk prefixed with where it comes from.

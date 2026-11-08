@@ -44,6 +44,17 @@ test('a chunk that crosses a page break records both pages', () => {
   assert.equal(chunks[0]!.pageEnd, 2);
 });
 
+test('tiny fragments (figure labels, stray lines) are merged into a neighbour', () => {
+  const chunks = chunkPages([
+    page(1, [['Figure 3', 18], 'Layer 5.', ['Methods', 18], ...sentences(0, 8)]),
+    page(2, [['Footer', 18], 'Page 2.']),
+  ]);
+  assert.ok(chunks.every((c) => c.tokenCount >= 40), 'no tiny chunks survive');
+  assert.ok(chunks[0]!.content.startsWith('Layer 5. Sentence 0'), 'fragment folded into the next chunk');
+  assert.equal(chunks.at(-1)!.pageEnd, 2, 'a trailing fragment folds into the previous chunk');
+  assert.deepEqual(chunks.map((c) => c.ordinal), chunks.map((_, i) => i));
+});
+
 test('headings start a new chunk and label the chunks under them', () => {
   const chunks = chunkPages([
     page(1, [['Introduction', 18], ...sentences(0, 5), ['Results', 18], ...sentences(5, 5)]),
