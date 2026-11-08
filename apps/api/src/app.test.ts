@@ -19,7 +19,7 @@ const brokenDb = {
 } as unknown as Deps['db'];
 
 test('GET /health returns 200 when the database answers', async () => {
-  const app = buildApp(testConfig, { db: healthyDb });
+  const app = await buildApp(testConfig, { db: healthyDb });
   const res = await app.inject({ method: 'GET', url: '/health' });
 
   assert.equal(res.statusCode, 200);
@@ -29,7 +29,7 @@ test('GET /health returns 200 when the database answers', async () => {
 });
 
 test('GET /health returns 503 when the database is down', async () => {
-  const app = buildApp(testConfig, { db: brokenDb });
+  const app = await buildApp(testConfig, { db: brokenDb });
   const res = await app.inject({ method: 'GET', url: '/health' });
 
   assert.equal(res.statusCode, 503);

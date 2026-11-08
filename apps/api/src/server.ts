@@ -4,7 +4,7 @@ import { createPool } from './db/pool.ts';
 
 const config = loadConfig();
 const pool = createPool(config.DATABASE_URL);
-const app = buildApp(config, { db: pool });
+const app = await buildApp(config, { db: pool });
 
 // Docker stops containers with SIGTERM; Ctrl+C sends SIGINT.
 // Order matters: stop taking requests and finish in-flight ones first, then close DB connections.
