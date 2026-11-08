@@ -1,0 +1,18 @@
+{
+  // tsc only type-checks (noEmit). Node runs the .ts files itself by stripping types,
+  // which is why imports use ".ts" and only "erasable" syntax is allowed (no enums).
+  "compilerOptions": {
+    "target": "esnext",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["src"]
+}
