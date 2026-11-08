@@ -13,7 +13,7 @@ This document is the source of truth for *what* we build and *why*. Every decisi
 **Goals**
 1. Answers are *grounded*: every sentence traces to a passage the user can verify in one click.
 2. Retrieval quality is *measured*, not claimed: a 40-question eval set with a published score.
-3. Cheap to run: under $0.001 per question, hard per-user budgets.
+3. Free to run: free-tier LLM by default, built to respect rate limits, hard per-user budgets.
 4. Production-shaped: background jobs, streaming, auth, rate limits, CI, Docker, HTTPS deploy.
 
 **Non-goals (v1)**
@@ -38,8 +38,8 @@ flowchart LR
     F[/File volume<br/>original PDFs/]
   end
   CF[Cloudflare<br/>CDN · DNS · WAF]
-  V[Voyage AI<br/>embeddings]
-  C[Claude API<br/>Haiku 5.5]
+  V[LLM provider · embeddings<br/>gemini-embedding-2]
+  C[LLM provider · generation<br/>gemini-3.5-flash]
 
   W -- HTTPS --> CF --> P --> A
   A -- SQL --> D
@@ -68,7 +68,7 @@ sequenceDiagram
   participant A as API
   participant D as Postgres
   participant K as Worker
-  participant V as Voyage
+  participant V as Embeddings API
   U->>A: POST /documents (multipart PDF)
   A->>A: check magic bytes %PDF-, size ≤ 25 MB, sha256
   A->>D: INSERT document (status=queued) + INSERT job  [one transaction]
@@ -97,21 +97,22 @@ sequenceDiagram
   participant U as User
   participant A as API
   participant D as Postgres
-  participant C as Claude
+  participant C as LLM
   U->>A: POST /chat/:conversationId/ask {question, documentIds?}
   A->>A: budget + rate-limit check
   A->>D: answer cache lookup (exact key)
   alt follow-up question
     A->>C: rewrite to standalone question (tiny call)
   end
-  A->>A: embed query (Voyage)
+  A->>A: embed query
   A->>D: hybrid search: vector top-40 ∪ full-text top-40 → RRF → top 8
   alt best score below threshold
     A-->>U: "Not found in your documents" (no LLM call)
   else
-    A->>C: stream: system prompt + 8 search_result blocks + question
-    C-->>A: text deltas + citations
-    A-->>U: SSE: tokens, then citations [{doc, page, cited_text}]
+    A->>C: stream: system prompt + 8 numbered sources + question
+    C-->>A: text deltas with [n] markers + quoted evidence
+    A->>A: verify every citation against its source chunk
+    A-->>U: SSE: tokens, then verified citations [{doc, page, quote}]
   end
   A->>D: save message + query_log (latency, tokens, cost)
 ```
@@ -161,12 +162,19 @@ LIMIT 8;
 list can't dominate. Filtered HNSW scans can lose recall, so we enable pgvector's
 `hnsw.iterative_scan` (0.8+).
 
-### 4.3 Cited answers (native citations)
-Each retrieved chunk is sent to Claude as a `search_result` content block with
-`citations: {enabled: true}`, carrying `source = "doc:{id}#p{page_start}"` and the document title.
-The API returns text blocks whose `citations` point at a specific search result plus the
-exact `cited_text`. We map that back to `chunk → document → page`, and the viewer highlights
-`cited_text` on that page.
+### 4.3 Cited answers with server-side verification
+Retrieved chunks are sent as numbered sources (`[1]` … `[8]`, each with title and pages).
+The model must put a marker after every claim, and for each marker return a short **verbatim
+quote** from that source. LLMs sometimes cite the wrong source or paraphrase a "quote", so
+**the server never trusts a citation as returned**:
+
+1. The marker must reference a source that was actually sent (`1 ≤ n ≤ 8`).
+2. The quote, after whitespace/case normalization, must appear in that chunk's text
+   (exact substring first, then a fuzzy match ≥ 0.9 to tolerate PDF hyphenation).
+3. Failing citations are dropped and counted in `query_logs.citations_rejected`.
+
+A verified quote also tells the PDF viewer exactly which text to highlight on the page.
+This works with any provider, so the citation guarantee doesn't depend on a vendor feature.
 
 ### 4.4 Grounding and abstention
 - System prompt: answer only from the provided sources; say so when they don't contain the answer.
@@ -176,7 +184,7 @@ exact `cited_text`. We map that back to `chunk → document → page`, and the v
 - The eval set includes ~6 unanswerable questions to measure this.
 
 ### 4.5 Follow-up questions
-"What about 2023?" retrieves garbage. When a conversation has history, one tiny Haiku call
+"What about 2023?" retrieves garbage. When a conversation has history, one tiny fast-model call
 rewrites the question into a standalone one before retrieval. First questions skip this call.
 
 ---
@@ -200,7 +208,7 @@ chunks       (id bigserial PK, document_id uuid FK ON DELETE CASCADE,
               user_id uuid,                    -- denormalized: filter without a join
               ordinal int, page_start int, page_end int, heading text,
               content text, token_count int,
-              embedding vector(1024),
+              embedding vector(768),
               tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED)
   INDEX hnsw (embedding vector_cosine_ops)
   INDEX gin  (tsv)
@@ -216,6 +224,7 @@ messages     (id uuid PK, conversation_id uuid FK, role text, content text,
 query_logs   (id bigserial PK, user_id uuid, message_id uuid, rewritten_query text,
               retrieval_ms int, ttft_ms int, total_ms int,
               input_tokens int, output_tokens int, cost_usd numeric(10,6),
+              provider text, model text, citations_rejected int,
               cache_hit bool, chunk_ids bigint[], created_at timestamptz)
 
 answer_cache (key text PK, response jsonb, created_at timestamptz)
@@ -279,28 +288,33 @@ Postgres row-level security as a second isolation layer.
 | D1 | **pgvector**, not Pinecone/Qdrant | Vectors, full-text, metadata and jobs in one DB. Hybrid search is one SQL query. Per-user filtering is a `WHERE`. Deletes are transactional. No extra vendor or bill. | A managed vector DB pays off at tens of millions of vectors or multi-region needs. A personal library is thousands. |
 | D2 | **Hybrid + RRF** | Covers both paraphrase and exact-term queries | Vector-only misses IDs and numbers. A learned reranker adds latency and cost. Measure first (stretch). |
 | D3 | **~400-token chunks, 60 overlap, contextual header** | Small enough to be precise, big enough to hold a full claim | Chosen by eval ablation, not by folklore |
-| D4 | **Native citations (`search_result` blocks)** | `cited_text` is returned by the API from the sources we sent, so citations can't point at text that doesn't exist | Prompting for `[1]` markers and parsing them is fragile and lets the model cite the wrong source |
+| D4 | **Citations verified on the server** (marker + verbatim quote, checked against the chunk) | No citation reaches the user unless its quote is really in that source. Works with any LLM. | Trusting model-written citations lets wrong or invented sources through. Vendor-native citation features lock you to one provider. |
 | D5 | **Postgres queue with `FOR UPDATE SKIP LOCKED`** | No Redis. ~50 lines we fully understand. Jobs commit atomically with the document row. | BullMQ+Redis is great at high throughput. Ingestion here is a few jobs per minute. |
 | D6 | **SSE**, not WebSockets | One-way server→client stream over plain HTTP. Auto-reconnect. Passes through Cloudflare. | WebSockets add a bidirectional protocol we don't need |
 | D7 | **Fastify + TypeScript + Zod** | Built-in schema validation, fast, first-class TS. Shared types with the frontend. | Express has no validation or typing story out of the box |
 | D8 | **Raw SQL (`pg`) + plain `.sql` migrations** | Vector ops, RRF and FTS are SQL-native. Every query is visible and explainable. | ORMs wrap `<=>` and `tsvector` awkwardly and hide the queries we want to show |
 | D9 | **Server-side sessions** in an httpOnly cookie | Instantly revocable, no token in JS reach (XSS-safe) | Stateless JWTs can't be revoked before expiry without a denylist, which is a session table anyway |
 | D10 | **Exact-key answer cache**, not semantic cache | Key = hash(normalized question + sorted doc ids + doc versions). Never serves a wrong answer. | A semantic cache returns the answer to a *similar* question, and "revenue 2022" vs "revenue 2023" are similar |
-| D11 | **Claude Haiku 5.5** for answers and rewrites | $0.10 / $0.50 per M tokens. Model id is an env var, so upgrading is config, not code. | Bigger models only if the eval shows a real accuracy gap |
-| D12 | **Voyage AI embeddings**, behind an `Embedder` interface | Anthropic's recommended embeddings partner. Interface means a fake embedder in unit tests. | Dimension is fixed per deployment. Switching models = migration + re-embed job. |
+| D11 | **Provider-agnostic LLM layer** (`LlmProvider` interface). Default is **Gemini free tier**: `gemini-3.5-flash` for answers, `-flash-lite` for rewrites. | ₹0 to build and demo. Switching to Claude/Groq/Ollama is an env var, and the eval can compare providers on the same 40 questions. | Coding straight against one SDK spreads vendor calls through the codebase and makes switching a rewrite |
+| D12 | **`gemini-embedding-2` at 768 dims**, behind an `Embedder` interface | Same free key. 768 dims is half the index size of 1536+ with little recall loss. The interface allows a fake embedder in unit tests. | Dimension is fixed per deployment (it's the column type). Switching models = migration + re-embed job. |
 | D13 | **Caddy** as reverse proxy | Automatic TLS, one-line config, `flush_interval -1` for SSE | Nginx works too but needs more config for the same result |
 
 ---
 
 ## 9. Cost model
 
-Per question: ~8 chunks × 400 tokens + prompt ≈ **4K input**, ~**500 output** tokens (thinking included).
-With Haiku 5.5: 4,000 × $0.10/M + 500 × $0.50/M ≈ **$0.00065 per question** (~₹0.06).
-That's ~1,500 questions per dollar. A full 40-question eval run costs about 3 cents.
-Embedding a 100-page PDF ≈ 60K tokens, which costs fractions of a cent.
+**₹0.** Development and the public demo run on the Gemini API free tier.
+Per question: ~8 chunks × 400 tokens + prompt ≈ **4K input**, ~**500 output** tokens.
+Embedding a 100-page PDF ≈ 60K tokens.
 
-Guards: per-user daily token budget (default 200K), rate limit 20 asks/min, upload cap of
-20 documents per user on the public demo, answer cache, pre-LLM abstention.
+On the free tier the constraint is **rate limits**, not money. The app is built for them:
+- Answer cache and pre-LLM abstention skip calls entirely.
+- Embeddings are sent in batches, and the worker backs off and retries on HTTP 429.
+- Per-user daily token budget (default 200K), 20 asks/min, 20 documents per user on the demo.
+- Rate-limit errors become a friendly "busy, try again in a minute", never a crash.
+
+Free-tier prompts may be used by Google to improve its models, so the demo states:
+*don't upload confidential documents*. Moving to a paid provider is a config change.
 
 ---
 
@@ -310,7 +324,8 @@ Guards: per-user daily token budget (default 200K), rate limit 20 asks/min, uplo
 - Isolation: every chunk/document query includes `user_id = $currentUser`. A test asserts that user B
   can never retrieve user A's chunks.
 - Passwords: argon2id. Cookies: httpOnly, Secure, SameSite=Lax. `@fastify/helmet` headers. CORS locked to our origin.
-- **Prompt injection:** document text enters only as `search_result` data. The model has no tools,
+- **Prompt injection:** document text enters only inside delimited source blocks that the system
+  prompt marks as untrusted data. The model has no tools,
   so a malicious PDF can at worst distort its own answer. It can't trigger actions or leak other users' data.
 - Secrets live in env only. The repo has `.env.example` only.
 
@@ -348,7 +363,7 @@ documind/
 │  │     ├─ modules/       auth/ documents/ conversations/ metrics/  (routes + service per module)
 │  │     ├─ ingestion/     parse.ts chunk.ts embed.ts pipeline.ts
 │  │     ├─ retrieval/     hybrid.ts rewrite.ts
-│  │     ├─ llm/           answer.ts (Claude streaming + citations)
+│  │     ├─ llm/           provider.ts gemini.ts answer.ts verify-citations.ts
 │  │     ├─ jobs/          queue.ts worker.ts
 │  │     ├─ server.ts      API entry
 │  │     └─ worker.ts      worker entry
@@ -399,10 +414,10 @@ Three-pane workspace, dark and light themes, Tailwind + shadcn/ui, TanStack Quer
 6. Job queue + worker loop
 7. PDF parsing per page + scanned-page detection
 8. Chunker + unit tests
-9. Embedder interface + Voyage implementation
+9. Embedder interface + Gemini implementation (batching, 429 backoff)
 10. Ingestion pipeline end-to-end + SSE status
 11. Hybrid retrieval SQL + tests
-12. Claude answer streaming with citations
+12. LLM provider interface + streamed answers + citation verifier (with tests)
 13. Web: auth + library + upload
 14. Web: chat streaming + citation chips
 15. Web: PDF viewer with highlight
