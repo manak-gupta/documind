@@ -7,12 +7,16 @@ import { registerErrorHandler } from './http/errors.ts';
 import { registerAuth } from './auth/routes.ts';
 import { documentRoutes } from './documents/routes.ts';
 import { type DocumentEvents, noEvents } from './documents/events.ts';
+import type { Embedder } from './llm/embedder.ts';
+import { createEmbedder } from './llm/factory.ts';
+import { searchRoutes } from './retrieval/routes.ts';
 
 // Everything the app needs from the outside world is passed in here ("dependency injection").
 // Production passes a real Postgres pool; tests pass a fake or a test database.
 export interface Deps {
   db: Db;
   events?: DocumentEvents; // live ingestion updates; optional so simple tests can skip it
+  embedder?: Embedder;     // defaults to the one LLM_PROVIDER selects
 }
 
 // buildApp creates the server WITHOUT starting it.
@@ -30,6 +34,7 @@ export async function buildApp(config: Config, deps: Deps) {
   await registerAuth(app, { config, db: deps.db });
   // Registered as an encapsulated plugin on purpose: its requireAuth hook applies to its routes only.
   await app.register(documentRoutes, { config, db: deps.db, events: deps.events ?? noEvents });
+  await app.register(searchRoutes, { db: deps.db, embedder: deps.embedder ?? createEmbedder(config) });
 
   // Health check for Docker / the load balancer.
   // 503 tells them "this instance can't serve traffic right now" (here: DB unreachable).
