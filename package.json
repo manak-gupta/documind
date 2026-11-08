@@ -1,0 +1,16 @@
+{
+  "name": "documind",
+  "private": true,
+  "description": "Ask questions across your PDFs and get answers cited to document, page and passage.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose down"
+  }
+}

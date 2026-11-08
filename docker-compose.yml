@@ -1,0 +1,21 @@
+# Development: only Postgres runs in Docker; api/web run on your machine with hot reload.
+# Production services (api, worker, caddy) get added in step 20.
+services:
+  db:
+    # Official pgvector image = Postgres 17 with the `vector` extension preinstalled.
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_USER: documind
+      POSTGRES_PASSWORD: documind
+      POSTGRES_DB: documind
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data   # named volume: data survives `docker compose down`
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U documind"]
+      interval: 5s
+      retries: 10
+
+volumes:
+  pgdata:
