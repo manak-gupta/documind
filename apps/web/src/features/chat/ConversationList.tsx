@@ -28,12 +28,12 @@ export function ConversationList({ activeId }: { activeId?: string }) {
             <Link to={`/c/${c.id}`}
               className={`flex items-center gap-2 rounded-lg px-2 py-1.5 pr-8 text-sm transition ${
                 c.id === activeId ? 'bg-zinc-200/70 font-medium dark:bg-zinc-800' : 'hover:bg-zinc-100 dark:hover:bg-zinc-900'}`}>
-              <MessageSquare className="size-3.5 shrink-0 text-zinc-400" />
+              <MessageSquare className="size-3.5 shrink-0 text-muted" />
               <span className="truncate">{c.title}</span>
             </Link>
             <button type="button" aria-label={`Delete conversation ${c.title}`}
               onClick={() => { if (confirm('Delete this conversation?')) remove.mutate(c.id); }}
-              className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-zinc-400 opacity-0 transition hover:text-red-600 group-hover:opacity-100 focus:opacity-100">
+              className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-muted opacity-0 transition hover:text-red-600 group-hover:opacity-100 focus:opacity-100">
               <Trash2 className="size-3.5" />
             </button>
           </li>

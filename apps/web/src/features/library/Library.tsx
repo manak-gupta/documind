@@ -54,7 +54,7 @@ export function Library({ selected, onToggle }: Props) {
             : 'border-zinc-300 hover:border-brand-400 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900'
         }`}
       >
-        {upload.isPending ? <Spinner className="size-5 text-brand-600" /> : <UploadCloud className="size-5 text-zinc-400" />}
+        {upload.isPending ? <Spinner className="size-5 text-brand-600" /> : <UploadCloud className="size-5 text-muted" />}
         <span className="font-medium">{upload.isPending ? 'Uploading…' : 'Drop PDFs or click to upload'}</span>
         <span className="text-xs text-zinc-500">Text-based PDFs, up to 25 MB</span>
       </button>
@@ -91,7 +91,7 @@ function DocumentRow({ doc, checked, onToggle, onDelete }: { doc: DocumentInfo; 
         <input type="checkbox" checked={checked} onChange={onToggle} disabled={!ready}
           title="Limit questions to the selected documents"
           className="mt-1 size-3.5 accent-brand-600 disabled:opacity-30" />
-        <FileText className="mt-0.5 size-4 shrink-0 text-zinc-400" />
+        <FileText className="mt-0.5 size-4 shrink-0 text-muted" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium" title={doc.title}>{doc.title}</p>
           <p className="flex items-center gap-1 text-xs text-zinc-500">
@@ -108,7 +108,7 @@ function DocumentRow({ doc, checked, onToggle, onDelete }: { doc: DocumentInfo; 
           )}
         </div>
         <button type="button" onClick={onDelete} aria-label={`Delete ${doc.title}`}
-          className="rounded p-1 text-zinc-400 opacity-0 transition hover:bg-zinc-200 hover:text-red-600 group-hover:opacity-100 focus:opacity-100 dark:hover:bg-zinc-800">
+          className="rounded p-1 text-muted opacity-0 transition hover:bg-zinc-200 hover:text-red-600 group-hover:opacity-100 focus:opacity-100 dark:hover:bg-zinc-800">
           <Trash2 className="size-3.5" />
         </button>
       </div>

@@ -11,6 +11,15 @@
   --color-brand-600: #4f46e5;
   --color-brand-700: #4338ca;
   --animate-blink: blink 1s steps(2, start) infinite;
+  /* Secondary text. zinc-500 on white is 4.8:1, passing WCAG AA (4.5:1); the zinc-400 used
+     before was 2.6:1 (flagged by the axe accessibility test). Dark mode overrides below. */
+  --color-muted: #71717a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-muted: #a1a1aa; /* zinc-400 on zinc-950: ~7.8:1 */
+  }
 }
 
 @keyframes blink {

@@ -79,7 +79,7 @@ export function Workspace() {
         <span className="grid size-7 place-items-center rounded-full bg-brand-100 text-xs font-semibold uppercase text-brand-700 dark:bg-brand-500/20 dark:text-brand-300">
           {me?.email[0]}
         </span>
-        <span className="min-w-0 flex-1 truncate text-zinc-600 dark:text-zinc-400">{me?.email}</span>
+        <span className="min-w-0 flex-1 truncate text-zinc-600 dark:text-muted">{me?.email}</span>
         <button type="button" onClick={() => logout.mutate()} aria-label="Sign out" title="Sign out"
           className="rounded p-1.5 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"><LogOut className="size-4" /></button>
       </div>

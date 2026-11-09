@@ -89,7 +89,7 @@ export function ChatView({ conversationId, documentIds, hasReadyDocuments, creat
     <div className="flex h-full flex-col">
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl space-y-8 px-4 py-8 sm:px-6">
-          {isLoading && <div className="flex justify-center"><Spinner className="size-5 text-zinc-400" /></div>}
+          {isLoading && <div className="flex justify-center"><Spinner className="size-5 text-muted" /></div>}
 
           {empty && !isLoading && (
             <EmptyState hasDocuments={hasReadyDocuments} onPick={(s) => void send(s)} scoped={documentIds.length} />
@@ -150,7 +150,7 @@ export function ChatView({ conversationId, documentIds, hasReadyDocuments, creat
             placeholder={hasReadyDocuments
               ? documentIds.length ? `Ask about ${documentIds.length} selected document${documentIds.length > 1 ? 's' : ''}…` : 'Ask a question across all your documents…'
               : 'Upload a PDF to start asking questions'}
-            className="field-sizing-content max-h-48 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed"
+            className="field-sizing-content max-h-48 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-muted disabled:cursor-not-allowed"
           />
           {busy ? (
             <button type="button" onClick={stop} aria-label="Stop generating"
@@ -159,12 +159,12 @@ export function ChatView({ conversationId, documentIds, hasReadyDocuments, creat
             </button>
           ) : (
             <button type="submit" disabled={!draft.trim() || !hasReadyDocuments} aria-label="Ask"
-              className="grid size-9 place-items-center rounded-xl bg-brand-600 text-white transition hover:bg-brand-700 disabled:bg-zinc-200 disabled:text-zinc-400 dark:disabled:bg-zinc-800">
+              className="grid size-9 place-items-center rounded-xl bg-brand-600 text-white transition hover:bg-brand-700 disabled:bg-zinc-200 disabled:text-muted dark:disabled:bg-zinc-800">
               <ArrowUp className="size-4" />
             </button>
           )}
         </div>
-        <p className="mx-auto mt-2 max-w-3xl text-center text-[11px] text-zinc-400">
+        <p className="mx-auto mt-2 max-w-3xl text-center text-[11px] text-muted">
           Answers use only your documents. Every citation is checked against its source.
         </p>
       </form>
@@ -206,7 +206,7 @@ function CitationList({ citations, onOpen }: { citations: Citation[]; onOpen: (c
           className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-zinc-200 px-2 py-1 text-xs transition hover:border-brand-400 hover:bg-brand-50 dark:border-zinc-800 dark:hover:bg-brand-500/10">
           <span className="font-semibold text-brand-700 dark:text-brand-300">{c.n}</span>
           <span className="truncate">{c.documentTitle}</span>
-          <span className="shrink-0 text-zinc-400">p. {c.pageStart}</span>
+          <span className="shrink-0 text-muted">p. {c.pageStart}</span>
         </button>
       ))}
     </div>
@@ -217,7 +217,7 @@ function EmptyState({ hasDocuments, onPick, scoped }: { hasDocuments: boolean; o
   if (!hasDocuments) {
     return (
       <div className="mx-auto max-w-md space-y-3 pt-16 text-center">
-        <FileQuestion className="mx-auto size-10 text-zinc-300 dark:text-zinc-700" />
+        <FileQuestion className="mx-auto size-10 text-muted" />
         <h2 className="text-lg font-semibold">Start by uploading a PDF</h2>
         <p className="text-sm text-zinc-500">
           Drop research papers, reports or manuals into the library on the left. Once indexed (usually a few seconds),

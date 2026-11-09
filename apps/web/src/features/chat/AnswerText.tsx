@@ -71,7 +71,7 @@ function inline(text: string, byN: Map<number, Citation>, streaming: boolean | u
       }
       // While streaming, markers aren't verified yet: show them as pending.
       return streaming
-        ? <span key={i} className="mx-0.5 inline-flex h-5 min-w-5 -translate-y-0.5 items-center justify-center rounded-md bg-zinc-100 px-1 text-[11px] text-zinc-400 dark:bg-zinc-800">{n}</span>
+        ? <span key={i} className="mx-0.5 inline-flex h-5 min-w-5 -translate-y-0.5 items-center justify-center rounded-md bg-zinc-100 px-1 text-[11px] text-muted dark:bg-zinc-800">{n}</span>
         : null;
     }
     return <Fragment key={i}>{part}</Fragment>;

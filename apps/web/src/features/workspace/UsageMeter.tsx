@@ -22,7 +22,7 @@ export function UsageMeter() {
       <div className="h-1 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800">
         <div className={`h-full rounded-full ${pct > 85 ? 'bg-amber-500' : 'bg-brand-500'}`} style={{ width: `${Math.max(pct, 2)}%` }} />
       </div>
-      <div className="flex justify-between text-zinc-400">
+      <div className="flex justify-between text-muted">
         <span>{data.questionsToday} questions</span>
         {data.totalP50 != null && <span>~{(data.totalP50 / 1000).toFixed(1)} s per answer</span>}
       </div>

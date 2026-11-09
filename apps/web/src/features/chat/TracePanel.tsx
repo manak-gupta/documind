@@ -20,7 +20,7 @@ export function TracePanel({ trace, question, citedNs, onOpen }: Props) {
   return (
     <div className="rounded-xl border border-zinc-200 text-sm dark:border-zinc-800">
       <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
-        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-medium text-zinc-600 hover:bg-zinc-50 dark:text-zinc-400 dark:hover:bg-zinc-900">
+        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-medium text-zinc-600 hover:bg-zinc-50 dark:text-muted dark:hover:bg-zinc-900">
         <ChevronRight className={`size-3.5 transition ${open ? 'rotate-90' : ''}`} />
         <Gauge className="size-3.5" /> Why this answer?
         {trace.cacheHit && (
@@ -28,7 +28,7 @@ export function TracePanel({ trace, question, citedNs, onOpen }: Props) {
             cached · 0 tokens
           </span>
         )}
-        <span className="ml-auto font-normal text-zinc-400">
+        <span className="ml-auto font-normal text-muted">
           {t && !trace.cacheHit ? `${(t.totalMs / 1000).toFixed(1)} s · ` : ''}{trace.chunks.length} sources
         </span>
       </button>
@@ -55,19 +55,19 @@ export function TracePanel({ trace, question, citedNs, onOpen }: Props) {
                   <div className="flex items-center gap-2 text-xs">
                     <span className="font-semibold text-brand-700 dark:text-brand-300">[{s.n}]</span>
                     <span className="truncate font-medium">{s.documentTitle}</span>
-                    <span className="shrink-0 text-zinc-400">p. {s.pageStart}{s.pageEnd !== s.pageStart && `–${s.pageEnd}`}</span>
+                    <span className="shrink-0 text-muted">p. {s.pageStart}{s.pageEnd !== s.pageStart && `–${s.pageEnd}`}</span>
                     <span className="ml-auto flex shrink-0 gap-1 font-mono text-[10px]">
                       <Rank label="vec" rank={s.vectorRank} />
                       <Rank label="kw" rank={s.keywordRank} />
                     </span>
                   </div>
-                  {s.heading && <p className="mt-0.5 truncate text-[11px] text-zinc-400">§ {s.heading}</p>}
+                  {s.heading && <p className="mt-0.5 truncate text-[11px] text-muted">§ {s.heading}</p>}
                   <p className="mt-1 line-clamp-2 text-xs text-zinc-500">{s.preview}</p>
                 </button>
               </li>
             ))}
           </ol>
-          <p className="text-[11px] text-zinc-400">
+          <p className="text-[11px] text-muted">
             Ranks from vector (meaning) and keyword search, merged with Reciprocal Rank Fusion. Highlighted sources are cited in the answer.
           </p>
         </div>
@@ -79,7 +79,7 @@ export function TracePanel({ trace, question, citedNs, onOpen }: Props) {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-zinc-400">{label}</dt>
+      <dt className="text-muted">{label}</dt>
       <dd className="font-medium tabular-nums">{value}</dd>
     </div>
   );
@@ -87,7 +87,7 @@ function Stat({ label, value }: { label: string; value: string }) {
 
 function Rank({ label, rank }: { label: string; rank: number | null }) {
   return (
-    <span className={`rounded px-1 py-0.5 ${rank ? 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300' : 'text-zinc-300 dark:text-zinc-700'}`}>
+    <span className={`rounded px-1 py-0.5 ${rank ? 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300' : 'text-muted'}`}>
       {label} {rank ?? '–'}
     </span>
   );
