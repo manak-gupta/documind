@@ -4,6 +4,7 @@ services:
   db:
     # Official pgvector image = Postgres 17 with the `vector` extension preinstalled.
     image: pgvector/pgvector:pg17
+    restart: unless-stopped   # come back automatically when Docker starts
     environment:
       POSTGRES_USER: documind
       POSTGRES_PASSWORD: documind

@@ -30,7 +30,9 @@ export class DocumentEventHub implements DocumentEvents {
 
   static async start(pool: pg.Pool): Promise<DocumentEventHub> {
     const hub = new DocumentEventHub(pool);
-    await hub.connect();
+    // If the database isn't up yet (e.g. containers starting in parallel), don't crash the API:
+    // /health reports 503 meanwhile, and the hub keeps retrying in the background.
+    await hub.connect().catch(() => hub.reconnectSoon());
     return hub;
   }
 
