@@ -1,0 +1,76 @@
+# Production stack: docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#
+#   web (Caddy :80/:443) ──/api──> api (:4000) ──> db (Postgres + pgvector)
+#                                  worker ───────> db, Gemini
+#   migrate runs once before api/worker start.
+x-app: &app
+  build:
+    context: .
+    target: api
+  image: documind-api
+  restart: unless-stopped
+  env_file: .env.production
+  environment:
+    NODE_ENV: production
+    DATABASE_URL: postgres://documind:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/documind
+    UPLOAD_DIR: /data/uploads
+  volumes:
+    - uploads:/data/uploads
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: documind
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: documind
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U documind"]
+      interval: 5s
+      retries: 10
+    # No published port: only reachable from the other containers.
+
+  migrate:
+    <<: *app
+    restart: "no"
+    command: ["node", "src/db/migrate.ts"]
+    depends_on:
+      db: { condition: service_healthy }
+
+  api:
+    <<: *app
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  worker:
+    <<: *app
+    command: ["node", "src/worker.ts"]
+    healthcheck: { disable: true }
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  web:
+    build:
+      context: .
+      target: web
+    image: documind-web
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:-:80}
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - caddy_data:/data   # certificates: must persist across restarts
+      - caddy_config:/config
+    depends_on:
+      api: { condition: service_healthy }
+
+volumes:
+  pgdata:
+  uploads:
+  caddy_data:
+  caddy_config:

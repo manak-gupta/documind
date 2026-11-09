@@ -1,0 +1,41 @@
+# Caddy: serves the React app, proxies /api to the Node API, and handles HTTPS.
+# DOMAIN=documind.example.com -> automatic Let's Encrypt certificate (needs ports 80/443).
+# DOMAIN=:80                  -> plain HTTP (local testing, or behind Cloudflare Flexible).
+{$DOMAIN::80} {
+	# API: /api/* -> api:4000 with the /api prefix stripped (same as the Vite dev proxy).
+	# NOT compressed: a compressor buffers output, which turns the streamed (SSE) answer into
+	# one burst at the end. Found by timing token arrival through this proxy.
+	handle_path /api/* {
+		request_body {
+			max_size 26MB # slightly above MAX_UPLOAD_MB so the API returns the friendly error
+		}
+		reverse_proxy api:4000 {
+			# Send SSE bytes immediately; buffering would make answers appear all at once.
+			flush_interval -1
+		}
+	}
+
+	# Web app: static files, falling back to index.html for client-side routes (/c/:id).
+	handle {
+		encode zstd gzip
+		root * /srv
+		# Hashed asset filenames never change content: cache for a year.
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		# index.html must always be revalidated so new deploys are picked up immediately.
+		@notAssets not path /assets/*
+		header @notAssets Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		# Same-origin everything. pdf.js runs in a worker from our own origin and may use blob: URLs.
+		Content-Security-Policy "default-src 'self'; script-src 'self'; worker-src 'self' blob:; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		-Server
+	}
+}

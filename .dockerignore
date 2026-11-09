@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+**/.cache
+**/test-results
+**/playwright-report
+.git
+.github
+.env
+.env.*
+data
+docs
+apps/api/eval
+**/*.test.ts
