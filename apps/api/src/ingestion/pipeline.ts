@@ -4,13 +4,14 @@ import type { Db } from '../db/pool.ts';
 import { PermanentJobError } from '../jobs/queue.ts';
 import { type Embedder, toPgVector } from '../llm/embedder.ts';
 import { filePath } from '../storage/files.ts';
-import { chunkPages, embeddingText } from './chunk.ts';
+import { type ChunkOptions, chunkPages, embeddingText } from './chunk.ts';
 import { parsePdf } from './parse.ts';
 
 export interface IngestDeps {
   pool: pg.Pool;
   embedder: Embedder;
   uploadDir: string;
+  chunking?: ChunkOptions; // the eval varies chunk size; production uses the defaults
 }
 
 const EMBED_BATCH = 50; // small enough to report progress often, big enough to be efficient
@@ -38,7 +39,7 @@ export async function ingestDocument(
       throw new PermanentJobError(`Could not read this PDF (${err.message})`);
     });
 
-    const chunks = chunkPages(parsed.pages);
+    const chunks = chunkPages(parsed.pages, deps.chunking);
     if (!chunks.length) {
       throw new PermanentJobError(parsed.scannedPages.length
         ? 'This PDF contains only scanned images, with no text layer. Scanned PDFs are not supported yet.'

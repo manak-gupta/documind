@@ -44,7 +44,32 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string;
   citations: Citation[];
+  trace: MessageTrace | null;  // assistant answers only
   createdAt: string;
+}
+
+// What "Why this answer?" shows. Stored with each answer; built from the stream while live.
+export interface MessageTrace {
+  searchQuery?: string;
+  topSimilarity?: number | null;
+  chunks: TraceChunk[];
+  timings?: AnswerResult['timings'];
+  usage?: AnswerResult['usage'];
+  rejectedCitations?: number;
+  cacheHit?: boolean;
+}
+
+export interface UsageSummary {
+  questionsToday: number;
+  questions7d: number;
+  tokensToday: number;
+  dailyTokenBudget: number;
+  cacheHitPct: number | null;
+  ttftP50: number | null;
+  ttftP95: number | null;
+  totalP50: number | null;
+  retrievalP50: number | null;
+  citationsRejected: number;
 }
 
 export interface TraceChunk {
@@ -72,6 +97,7 @@ export interface AnswerResult {
   usage: { inputTokens: number; outputTokens: number } | null;
   model: string | null;
   timings: { rewriteMs: number; retrievalMs: number; ttftMs: number | null; totalMs: number };
+  cacheHit?: boolean;
 }
 
 export class ApiError extends Error {
@@ -121,4 +147,6 @@ export const api = {
   getConversation: (id: string) =>
     request<{ conversation: Conversation; messages: Message[] }>('GET', `/conversations/${id}`),
   deleteConversation: (id: string) => request<void>('DELETE', `/conversations/${id}`),
+
+  usage: () => request<UsageSummary>('GET', '/metrics/summary'),
 };

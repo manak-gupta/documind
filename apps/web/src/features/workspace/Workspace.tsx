@@ -10,6 +10,7 @@ import { Library } from '../library/Library.tsx';
 import { useDocuments } from '../library/useDocuments.ts';
 import { ChatView, type SourceTarget } from '../chat/ChatView.tsx';
 import { ConversationList } from '../chat/ConversationList.tsx';
+import { UsageMeter } from './UsageMeter.tsx';
 
 // pdf.js is the heaviest dependency; it's only downloaded when a source is first opened.
 const PdfViewer = lazy(() => import('../viewer/PdfViewer.tsx'));
@@ -25,6 +26,9 @@ export function Workspace() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [source, setSource] = useState<SourceTarget | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // On mobile, picking a conversation in the slide-over menu should close the menu.
+  useEffect(() => setSidebarOpen(false), [conversationId]);
 
   // Forget selections of documents that were deleted.
   useEffect(() => {
@@ -70,6 +74,7 @@ export function Workspace() {
         <Library selected={selected} onToggle={toggle} />
         <ConversationList activeId={conversationId} />
       </div>
+      <div className="px-3 pb-3"><UsageMeter /></div>
       <div className="flex items-center gap-2 border-t border-zinc-200 p-3 text-sm dark:border-zinc-800">
         <span className="grid size-7 place-items-center rounded-full bg-brand-100 text-xs font-semibold uppercase text-brand-700 dark:bg-brand-500/20 dark:text-brand-300">
           {me?.email[0]}

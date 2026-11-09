@@ -6,8 +6,10 @@ import { ApiError } from '../llm/http.ts';
 import type { LlmMessage, LlmProvider } from '../llm/provider.ts';
 import { requireAuth } from '../auth/routes.ts';
 import { HttpError } from '../http/errors.ts';
-import { openSse } from '../http/sse.ts';
-import { answerQuestion, type AnswerResult } from './answer.ts';
+import { openSse, type SseStream } from '../http/sse.ts';
+import { answerQuestion, type AnswerResult, type TraceChunk } from './answer.ts';
+import { cacheKey, getCached, setCached } from './cache.ts';
+import { enforceLimits, type Limits } from './limits.ts';
 
 const IdParams = z.object({ id: z.uuid() });
 const AskBody = z.object({
@@ -20,6 +22,23 @@ export interface ChatDeps {
   embedder: Embedder;
   llm: LlmProvider;
   abstainSimilarity: number;
+  limits: Limits;
+}
+
+interface Trace {
+  searchQuery: string;
+  topSimilarity: number | null;
+  chunks: TraceChunk[];
+  timings: AnswerResult['timings'];
+  usage: AnswerResult['usage'];
+  model: string | null;
+  rejectedCitations: number;
+  cacheHit?: boolean;
+}
+
+interface CachedAnswer {
+  result: AnswerResult;
+  trace: Trace;
 }
 
 export async function chatRoutes(app: FastifyInstance, deps: ChatDeps) {
@@ -56,7 +75,7 @@ export async function chatRoutes(app: FastifyInstance, deps: ChatDeps) {
     const { id } = IdParams.parse(req.params);
     const conversation = await ownConversation(id, req.user!.id);
     const { rows } = await db.query(
-      `SELECT id, role, content, citations, created_at AS "createdAt"
+      `SELECT id, role, content, citations, trace, created_at AS "createdAt"
          FROM messages WHERE conversation_id = $1 ORDER BY created_at`, [id]);
     return { conversation, messages: rows };
   });
@@ -72,13 +91,15 @@ export async function chatRoutes(app: FastifyInstance, deps: ChatDeps) {
   //   status   {stage}                   rewriting | retrieving | generating
   //   sources  {searchQuery, chunks}     what was retrieved (the "Why this answer?" panel)
   //   token    {text}                    answer text as it's generated
-  //   done     {messageId, answer, citations, ...}  the verified final answer
+  //   done     {messageId, answer, citations, cacheHit, ...}  the verified final answer
   //   error    {message}
   app.post('/conversations/:id/ask', async (req, reply) => {
     const userId = req.user!.id;
     const { id } = IdParams.parse(req.params);
-    const body = AskBody.parse(req.body); // validate BEFORE opening the stream, so bad input is a normal 400
+    // Everything that can fail with a normal HTTP error happens BEFORE the stream opens.
+    const body = AskBody.parse(req.body);
     const conversation = await ownConversation(id, userId);
+    await enforceLimits(db, userId, deps.limits);
 
     const { rows: past } = await db.query<{ role: 'user' | 'assistant'; content: string }>(
       `SELECT role, content FROM (
@@ -92,17 +113,33 @@ export async function chatRoutes(app: FastifyInstance, deps: ChatDeps) {
     }
 
     const sse = openSse(reply);
+
+    // Only first questions are cacheable: a follow-up's meaning depends on the conversation.
+    const key = history.length ? null : await cacheKey(db, userId, body.question, body.documentIds);
+    const cached = key ? await getCached<CachedAnswer>(db, key) : null;
+    if (cached) {
+      const trace: Trace = { ...cached.trace, cacheHit: true };
+      sse.send('sources', { searchQuery: trace.searchQuery, topSimilarity: trace.topSimilarity, chunks: trace.chunks });
+      sse.send('token', { text: cached.result.answer });
+      await finish(sse, { ...cached.result, usage: null }, trace, true);
+      return;
+    }
+
     // If the user closes the tab mid-answer, stop generating: no point spending quota on it.
     const abort = new AbortController();
     sse.onClose(() => abort.abort());
 
     let result: AnswerResult | null = null;
+    let sources: { topSimilarity: number; chunks: TraceChunk[] } | null = null;
     try {
       for await (const event of answerQuestion(deps, { userId, question: body.question, history, documentIds: body.documentIds, signal: abort.signal })) {
         if (event.type === 'done') result = event.result;
         else if (event.type === 'token') sse.send('token', { text: event.text });
         else if (event.type === 'status') sse.send('status', { stage: event.stage });
-        else sse.send('sources', event);
+        else {
+          sources = event;
+          sse.send('sources', event);
+        }
       }
     } catch (err) {
       if (!abort.signal.aborted) {
@@ -114,24 +151,46 @@ export async function chatRoutes(app: FastifyInstance, deps: ChatDeps) {
     }
 
     const r = result!;
-    const { rows } = await db.query<{ id: string }>(
-      `INSERT INTO messages (conversation_id, role, content, citations) VALUES ($1, 'assistant', $2, $3) RETURNING id`,
-      [id, r.answer, JSON.stringify(r.citations)]);
-    await db.query(
-      `INSERT INTO query_logs (user_id, message_id, rewritten_query, retrieval_ms, ttft_ms, total_ms,
-                               input_tokens, output_tokens, provider, model, citations_rejected, chunk_ids)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::bigint[])`,
-      [userId, rows[0]!.id, r.searchQuery, r.timings.retrievalMs, r.timings.ttftMs, r.timings.totalMs,
-       r.usage?.inputTokens ?? 0, r.usage?.outputTokens ?? 0, deps.llm.name, r.model, r.rejectedCitations, r.chunkIds]);
+    // Everything the "Why this answer?" panel shows, stored with the answer.
+    const trace: Trace = {
+      searchQuery: r.searchQuery,
+      topSimilarity: sources?.topSimilarity ?? null,
+      chunks: sources?.chunks ?? [],
+      timings: r.timings,
+      usage: r.usage,
+      model: r.model,
+      rejectedCitations: r.rejectedCitations,
+    };
+    await finish(sse, r, trace, false);
+    // Cache real answers only. "Not found" is cheap to recompute and may change once the
+    // user uploads the right document (the corpus version in the key covers that anyway).
+    if (key && !r.notFound) await setCached(db, key, { result: r, trace } satisfies CachedAnswer);
 
-    sse.send('done', { messageId: rows[0]!.id, ...r });
-    sse.close();
+    // Store the answer, log the query, and send the final event.
+    async function finish(stream: SseStream, res: AnswerResult, t: Trace, cacheHit: boolean) {
+      const { rows } = await db.query<{ id: string }>(
+        `INSERT INTO messages (conversation_id, role, content, citations, trace)
+         VALUES ($1, 'assistant', $2, $3, $4) RETURNING id`,
+        [id, res.answer, JSON.stringify(res.citations), JSON.stringify(t)]);
+      await db.query(
+        `INSERT INTO query_logs (user_id, message_id, rewritten_query, retrieval_ms, ttft_ms, total_ms, input_tokens,
+                                 output_tokens, provider, model, citations_rejected, cache_hit, chunk_ids)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::bigint[])`,
+        [userId, rows[0]!.id, res.searchQuery, cacheHit ? 0 : res.timings.retrievalMs, cacheHit ? null : res.timings.ttftMs,
+         cacheHit ? 0 : res.timings.totalMs, res.usage?.inputTokens ?? 0, res.usage?.outputTokens ?? 0, deps.llm.name,
+         res.model, res.rejectedCitations, cacheHit, res.chunkIds]);
+      stream.send('done', { messageId: rows[0]!.id, ...res, cacheHit });
+      stream.close();
+    }
   });
 }
 
 function friendlyError(err: unknown): string {
   if (err instanceof ApiError && err.status === 429) {
     return 'The AI service is busy right now (free-tier rate limit). Please try again in a minute.';
+  }
+  if (err instanceof ApiError && err.status === 503) {
+    return 'The AI service is overloaded right now. Please try again in a moment.';
   }
   return 'Something went wrong while answering. Please try again.';
 }

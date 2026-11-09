@@ -5,7 +5,7 @@ import { api, type Citation, type TraceChunk } from '../../lib/api.ts';
 import { Spinner } from '../../components/Spinner.tsx';
 import { AnswerText } from './AnswerText.tsx';
 import { TracePanel } from './TracePanel.tsx';
-import { type LiveAnswer, useAsk } from './useAsk.ts';
+import { useAsk } from './useAsk.ts';
 
 export interface SourceTarget {
   documentId: string;
@@ -42,8 +42,6 @@ export function ChatView({ conversationId, documentIds, hasReadyDocuments, creat
   });
   const { live, ask, stop, clear } = useAsk(conversationId);
   const [draft, setDraft] = useState('');
-  // Traces exist only for answers produced in this session (they come from the live stream).
-  const [traces, setTraces] = useState<Record<string, LiveAnswer>>({});
   const bottom = useRef<HTMLDivElement>(null);
   const messages = data?.messages ?? [];
   const busy = !!live && live.stage !== 'done' && live.stage !== 'error';
@@ -51,11 +49,13 @@ export function ChatView({ conversationId, documentIds, hasReadyDocuments, creat
   // Once the stored message for a finished live answer has arrived, swap live -> stored.
   useEffect(() => {
     const id = live?.result?.messageId;
-    if (id && messages.some((m) => m.id === id)) {
-      setTraces((t) => ({ ...t, [id]: live }));
-      clear();
-    }
+    if (id && messages.some((m) => m.id === id)) clear();
   }, [messages, live, clear]);
+
+  // The server saves the question as soon as it's asked, so a refetch during streaming can
+  // already contain it. Don't render it twice.
+  const lastStored = messages.at(-1);
+  const questionAlreadyStored = !!live && lastStored?.role === 'user' && lastStored.content === live.question;
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -100,9 +100,8 @@ export function ChatView({ conversationId, documentIds, hasReadyDocuments, creat
               <AssistantBlock key={m.id}>
                 <AnswerText text={m.content} citations={m.citations} onCite={openCitation} />
                 <CitationList citations={m.citations} onOpen={openCitation} />
-                {traces[m.id] && (
-                  <TracePanel sources={traces[m.id]!.sources} searchQuery={traces[m.id]!.searchQuery} question={traces[m.id]!.question}
-                    topSimilarity={traces[m.id]!.topSimilarity} result={traces[m.id]!.result} onOpen={openChunk} />
+                {m.trace && (
+                  <TracePanel trace={m.trace} question={questionBefore(messages, m.id)} citedNs={m.citations.map((c) => c.n)} onOpen={openChunk} />
                 )}
               </AssistantBlock>
             ),
@@ -110,7 +109,7 @@ export function ChatView({ conversationId, documentIds, hasReadyDocuments, creat
 
           {live && !messages.some((m) => m.id === live.result?.messageId) && (
             <>
-              <UserBubble text={live.question} />
+              {!questionAlreadyStored && <UserBubble text={live.question} />}
               <AssistantBlock>
                 {live.stage === 'error' ? (
                   <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/50 dark:text-red-300">{live.error}</p>
@@ -123,8 +122,12 @@ export function ChatView({ conversationId, documentIds, hasReadyDocuments, creat
                 )}
                 {live.result && <CitationList citations={live.result.citations} onOpen={openCitation} />}
                 {(live.sources.length > 0 || live.result) && (
-                  <TracePanel sources={live.sources} searchQuery={live.searchQuery} question={live.question}
-                    topSimilarity={live.topSimilarity} result={live.result} onOpen={openChunk} />
+                  <TracePanel question={live.question} citedNs={live.result?.citations.map((c) => c.n) ?? []} onOpen={openChunk}
+                    trace={{
+                      searchQuery: live.searchQuery, topSimilarity: live.topSimilarity, chunks: live.sources,
+                      timings: live.result?.timings, usage: live.result?.usage, rejectedCitations: live.result?.rejectedCitations,
+                      cacheHit: live.result?.cacheHit,
+                    }} />
                 )}
               </AssistantBlock>
             </>
@@ -165,6 +168,12 @@ export function ChatView({ conversationId, documentIds, hasReadyDocuments, creat
       </form>
     </div>
   );
+}
+
+// The user question an answer responds to (shown in the trace when it was rewritten).
+function questionBefore(messages: { id: string; role: string; content: string }[], answerId: string): string {
+  const i = messages.findIndex((m) => m.id === answerId);
+  return messages.slice(0, i).findLast((m) => m.role === 'user')?.content ?? '';
 }
 
 function UserBubble({ text }: { text: string }) {

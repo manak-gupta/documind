@@ -1,6 +1,9 @@
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
+import helmet from '@fastify/helmet';
+import rateLimit from '@fastify/rate-limit';
+import { metricsRoutes } from './metrics/routes.ts';
 import type { Config } from './config.ts';
 import type { Db } from './db/pool.ts';
 import { registerErrorHandler } from './http/errors.ts';
@@ -32,6 +35,10 @@ export async function buildApp(config: Config, deps: Deps) {
   });
 
   registerErrorHandler(app);
+  // Security headers on every response (nosniff, frame-ancestors, referrer policy, ...).
+  await app.register(helmet);
+  // Rate limiting is opt-in per route (see the auth routes): global: false.
+  await app.register(rateLimit, { global: false });
   await app.register(cookie);
   await app.register(multipart);
   await registerAuth(app, { config, db: deps.db });
@@ -39,9 +46,11 @@ export async function buildApp(config: Config, deps: Deps) {
   await app.register(documentRoutes, { config, db: deps.db, events: deps.events ?? noEvents });
   const embedder = deps.embedder ?? createEmbedder(config);
   await app.register(searchRoutes, { db: deps.db, embedder });
+  const limits = { askRatePerMin: config.ASK_RATE_LIMIT_PER_MIN, dailyTokenBudget: config.DAILY_TOKEN_BUDGET };
   await app.register(chatRoutes, {
-    db: deps.db, embedder, llm: deps.llm ?? createLlm(config), abstainSimilarity: config.ABSTAIN_SIMILARITY,
+    db: deps.db, embedder, llm: deps.llm ?? createLlm(config), abstainSimilarity: config.ABSTAIN_SIMILARITY, limits,
   });
+  await app.register(metricsRoutes, { db: deps.db, limits });
 
   // Health check for Docker / the load balancer.
   // 503 tells them "this instance can't serve traffic right now" (here: DB unreachable).

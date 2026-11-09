@@ -60,9 +60,18 @@ export async function fetchWithRetry(url: string, init: RequestInit, opts: Retry
     if (!RETRYABLE.has(res.status) || attempt >= retries) {
       throw new ApiError(res.status, `HTTP ${res.status}: ${body.slice(0, 500)}`);
     }
-    const retryAfter = Number(res.headers.get('retry-after'));
-    await sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1_000 : backoff(attempt, baseDelayMs));
+    await sleep(serverDelayMs(res, body) ?? backoff(attempt, baseDelayMs));
   }
+}
+
+// How long the server asked us to wait, if it said: the standard Retry-After header, or
+// Google's RetryInfo in the error body ("retryDelay": "37s"). Quota windows are often a full
+// minute, so guessing with short exponential backoff just burns the retry budget.
+export function serverDelayMs(res: Response, body: string): number | null {
+  const header = Number(res.headers.get('retry-after'));
+  if (Number.isFinite(header) && header > 0) return header * 1_000;
+  const m = /"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/.exec(body);
+  return m ? Math.ceil(Number(m[1]) * 1_000) + 500 : null;
 }
 
 const backoff = (attempt: number, base: number) => base * 2 ** attempt + Math.random() * base;

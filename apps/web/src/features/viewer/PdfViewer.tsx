@@ -126,7 +126,7 @@ export default function PdfViewer({ source, onClose }: { source: SourceTarget; o
         <div className="relative mx-auto bg-white shadow-lg" style={size ? { width: size.width, height: size.height } : undefined}>
           <canvas ref={canvasRef} style={size ? { width: size.width, height: size.height } : undefined} />
           {boxes.map((b, i) => (
-            <div key={i} ref={i === 0 ? highlightRef : undefined}
+            <div key={i} ref={i === 0 ? highlightRef : undefined} data-highlight
               className="pointer-events-none absolute rounded-sm bg-amber-300/45 mix-blend-multiply ring-1 ring-amber-400/60"
               style={{ left: b.left, top: b.top, width: b.width, height: b.height }} />
           ))}

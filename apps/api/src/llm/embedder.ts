@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { fetchJsonWithRetry, type RetryOptions } from './http.ts';
+import { RateLimiter } from './rate-limiter.ts';
 
 // The rest of the app only knows this interface. Swapping Gemini for another provider means
 // writing one new class, not touching ingestion or search.
@@ -15,7 +16,6 @@ export interface Embedder {
 // ---------------- Gemini ----------------
 
 const GEMINI_BASE = 'https://generativelanguage.googleapis.com/v1beta';
-const BATCH_SIZE = 100; // texts per batchEmbedContents request
 
 interface GeminiBatchResponse {
   embeddings: { values: number[] }[];
@@ -26,18 +26,24 @@ export class GeminiEmbedder implements Embedder {
   readonly dimensions: number;
   private readonly apiKey: string;
   private readonly retry: RetryOptions;
+  private readonly limiter: RateLimiter;
+  private readonly batchSize: number;
 
-  constructor(opts: { apiKey: string; model: string; dimensions: number; retry?: RetryOptions }) {
+  constructor(opts: { apiKey: string; model: string; dimensions: number; requestsPerMinute?: number; retry?: RetryOptions }) {
     this.apiKey = opts.apiKey;
     this.model = opts.model;
     this.dimensions = opts.dimensions;
     this.retry = opts.retry ?? {};
+    // Each text in a batch counts as one request against the provider's per-minute quota.
+    const rpm = opts.requestsPerMinute ?? 90;
+    this.limiter = new RateLimiter({ max: rpm });
+    this.batchSize = Math.min(100, rpm); // the API accepts at most 100 texts per batch call
   }
 
   async embedDocuments(texts: string[]): Promise<number[][]> {
     const out: number[][] = [];
-    for (let i = 0; i < texts.length; i += BATCH_SIZE) {
-      out.push(...(await this.batch(texts.slice(i, i + BATCH_SIZE), 'RETRIEVAL_DOCUMENT')));
+    for (let i = 0; i < texts.length; i += this.batchSize) {
+      out.push(...(await this.batch(texts.slice(i, i + this.batchSize), 'RETRIEVAL_DOCUMENT')));
     }
     return out;
   }
@@ -47,6 +53,7 @@ export class GeminiEmbedder implements Embedder {
   }
 
   private async batch(texts: string[], taskType: 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY'): Promise<number[][]> {
+    await this.limiter.acquire(texts.length);
     const res = await fetchJsonWithRetry<GeminiBatchResponse>(
       `${GEMINI_BASE}/models/${this.model}:batchEmbedContents`,
       {

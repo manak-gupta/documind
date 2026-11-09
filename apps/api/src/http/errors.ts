@@ -28,8 +28,11 @@ export function registerErrorHandler(app: FastifyInstance) {
     if (err instanceof HttpError) {
       return reply.code(err.statusCode).send({ error: err.code, message: err.message });
     }
-    // Fastify's own 4xx errors (malformed JSON, body too large, ...).
+    // Fastify's own 4xx errors (malformed JSON, body too large, rate limited, ...).
     const status = (err as { statusCode?: number }).statusCode;
+    if (status === 429) {
+      return reply.code(429).send({ error: 'rate_limited', message: 'Too many attempts. Please wait a minute and try again.' });
+    }
     if (status && status >= 400 && status < 500) {
       return reply.code(status).send({ error: 'bad_request', message: (err as Error).message });
     }

@@ -21,12 +21,19 @@ const EnvSchema = z.object({
   EMBEDDING_MODEL: z.string().default('gemini-embedding-2'),
   // Must match the vector(N) column; the worker checks this against the database at startup.
   EMBEDDING_DIM: z.coerce.number().int().default(768),
+  // Client-side pacing to stay under the provider quota (Gemini free tier: 100/min, counted per text).
+  EMBED_REQUESTS_PER_MIN: z.coerce.number().int().min(1).default(90),
   LLM_MODEL: z.string().default('gemini-3.5-flash'),
   LLM_FAST_MODEL: z.string().default('gemini-3.5-flash-lite'),
   LLM_THINKING: z.enum(['off', 'low', 'high']).default('low'),
   // Below this best-match similarity we answer "not in your documents" without calling the LLM.
   // Measured on the Attention paper: off-topic 0.54, real questions 0.78-0.84.
   ABSTAIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.6),
+
+  // Abuse and cost guards
+  ASK_RATE_LIMIT_PER_MIN: z.coerce.number().int().min(1).default(20),
+  DAILY_TOKEN_BUDGET: z.coerce.number().int().min(1000).default(200_000),
+  AUTH_RATE_LIMIT_PER_MIN: z.coerce.number().int().min(1).default(10), // per IP, login + register
 }).superRefine((env, ctx) => {
   if (env.LLM_PROVIDER === 'gemini' && !env.GEMINI_API_KEY) {
     ctx.addIssue({ code: 'custom', path: ['GEMINI_API_KEY'], message: 'Required when LLM_PROVIDER=gemini' });

@@ -6,6 +6,9 @@ coverage/
 .env.*
 !.env.example
 data/
+.cache/
+test-results/
+playwright-report/
 *.log
 .DS_Store
 .vscode/*

@@ -1,0 +1,31 @@
+{
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "How many layers does the decoder have?",
+            "thoughtSignature": "EmAKXgFpFH0T9FLtD7vC5RobHReZ8cpflkyb2yn8Wofp21OjuIqnTM8TJF72RkCHtiNJZ7rzVjFEpoCS/5Bd6G9eUo2aneMb/Ykkduv5EPzGwCvdq0yoO3mRRJOy5hYY0LA="
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 48,
+    "candidatesTokenCount": 8,
+    "totalTokenCount": 56,
+    "promptTokensDetails": [
+      {
+        "modality": "TEXT",
+        "tokenCount": 48
+      }
+    ],
+    "serviceTier": "standard"
+  },
+  "modelVersion": "gemini-3.5-flash-lite",
+  "responseId": "fxvyapO4M4T7694P1JS-8Q0"
+}

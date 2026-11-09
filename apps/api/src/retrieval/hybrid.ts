@@ -22,6 +22,8 @@ export interface SearchOptions {
   documentIds?: string[];  // restrict to these documents; default = the user's whole library
   limit?: number;          // chunks returned to the caller (sent to the LLM)
   candidates?: number;     // how deep each list goes before fusion
+  // Ablation switch for the eval: turn off one of the two retrievers.
+  mode?: 'hybrid' | 'vector' | 'keyword';
 }
 
 export interface SearchResult {
@@ -56,6 +58,7 @@ vec AS (
        ORDER BY embedding <=> $1::vector
        LIMIT $5
     ) nearest
+   WHERE $7::boolean
 ),
 kw AS (
   SELECT id, row_number() OVER (ORDER BY rank DESC) AS rnk
@@ -67,6 +70,7 @@ kw AS (
        ORDER BY rank DESC
        LIMIT $5
     ) matches
+   WHERE $8::boolean
 ),
 fused AS (
   SELECT coalesce(vec.id, kw.id) AS id,
@@ -96,6 +100,8 @@ export async function hybridSearch(db: Db, embedder: Embedder, opts: SearchOptio
     opts.query,
     opts.candidates ?? 40,
     opts.limit ?? 8,
+    (opts.mode ?? 'hybrid') !== 'keyword', // use the vector list?
+    (opts.mode ?? 'hybrid') !== 'vector',  // use the keyword list?
   ]);
   const t2 = performance.now();
 

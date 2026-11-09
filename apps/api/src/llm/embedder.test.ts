@@ -22,7 +22,7 @@ test('gemini embedder batches 250 texts into 3 requests with the right task type
     }));
   }) as typeof fetch;
 
-  const e = new GeminiEmbedder({ apiKey: 'k', model: 'm', dimensions: 8, retry: { fetchImpl } });
+  const e = new GeminiEmbedder({ apiKey: 'k', model: 'm', dimensions: 8, requestsPerMinute: 1000, retry: { fetchImpl } });
   const vectors = await e.embedDocuments(Array.from({ length: 250 }, (_, i) => `text ${i}`));
 
   assert.equal(vectors.length, 250);

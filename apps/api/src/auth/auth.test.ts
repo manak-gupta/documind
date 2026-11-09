@@ -96,6 +96,24 @@ describe('auth', () => {
     assert.deepEqual(paths, ['email', 'password']);
   });
 
+  test('login attempts are rate limited per IP (slows password guessing)', async () => {
+    const strict = await buildApp(testConfig({ AUTH_RATE_LIMIT_PER_MIN: 3 }), { db: pool });
+    const attempt = () => strict.inject({
+      method: 'POST', url: '/auth/login', payload: { email: uniqueEmail(), password: 'wrong-password' },
+    });
+    for (let i = 0; i < 3; i++) assert.equal((await attempt()).statusCode, 401);
+    const blocked = await attempt();
+    assert.equal(blocked.statusCode, 429);
+    assert.equal(blocked.json().error, 'rate_limited');
+    await strict.close();
+  });
+
+  test('responses carry security headers', async () => {
+    const res = await app.inject({ method: 'GET', url: '/health' });
+    assert.equal(res.headers['x-content-type-options'], 'nosniff');
+    assert.ok(res.headers['content-security-policy']);
+  });
+
   test('/me without a cookie is 401', async () => {
     const res = await app.inject({ method: 'GET', url: '/me' });
     assert.equal(res.statusCode, 401);

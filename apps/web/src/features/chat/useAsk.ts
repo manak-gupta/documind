@@ -55,6 +55,7 @@ export function useAsk(conversationId: string | undefined) {
     } finally {
       await queryClient.invalidateQueries({ queryKey: ['conversation', convId] });
       void queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      void queryClient.invalidateQueries({ queryKey: ['usage'] });
     }
   }, [conversationId, queryClient]);
 

@@ -91,6 +91,15 @@ describe('hybrid search', () => {
     assert.ok(timings.searchMs >= 0);
   });
 
+  test('vector-only and keyword-only modes use only their own retriever (for ablations)', async () => {
+    const userId = await newUser();
+    await seedDocument(pool, userId, 'Attention paper', paper);
+    const vec = await hybridSearch(pool, embedder, { userId, query: 'encoder layers', mode: 'vector' });
+    const kw = await hybridSearch(pool, embedder, { userId, query: 'encoder layers', mode: 'keyword' });
+    assert.ok(vec.chunks.length > 0 && vec.chunks.every((c) => c.keywordRank === null && c.vectorRank !== null));
+    assert.ok(kw.chunks.length > 0 && kw.chunks.every((c) => c.vectorRank === null && c.keywordRank !== null));
+  });
+
   test('hostile or odd input is treated as plain text, never as query syntax', async () => {
     const userId = await newUser();
     await seedDocument(pool, userId, 'Attention paper', paper);

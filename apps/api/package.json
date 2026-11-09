@@ -8,12 +8,16 @@
     "worker": "node --watch --env-file-if-exists=../../.env src/worker.ts",
     "start:worker": "node src/worker.ts",
     "migrate": "node --env-file-if-exists=../../.env src/db/migrate.ts",
+    "eval:generate": "node --env-file-if-exists=../../.env eval/generate.ts",
+    "eval": "node --env-file-if-exists=../../.env eval/run.ts",
     "typecheck": "tsc",
     "test": "node --test \"src/**/*.test.ts\""
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.5",
+    "@fastify/helmet": "^13.2.0",
     "@fastify/multipart": "^10.1.8",
+    "@fastify/rate-limit": "^11.2.2",
     "fastify": "^5.12.8",
     "pdfjs-dist": "^6.5.438",
     "pg": "^8.23.1",

@@ -63,7 +63,11 @@ export async function registerAuth(app: FastifyInstance, opts: { config: Config;
     req.user = token ? await findUserBySession(db, token) : null;
   });
 
-  app.post('/auth/register', async (req, reply) => {
+  // Per-IP limit on credential endpoints: slows password guessing and mass sign-ups.
+  // (In-memory store: fine for one API instance; use the Redis store when scaling out.)
+  const authLimit = { rateLimit: { max: config.AUTH_RATE_LIMIT_PER_MIN, timeWindow: '1 minute' } };
+
+  app.post('/auth/register', { config: authLimit }, async (req, reply) => {
     const { email, password } = Credentials.parse(req.body);
     const passwordHash = await hashPassword(password);
 
@@ -81,7 +85,7 @@ export async function registerAuth(app: FastifyInstance, opts: { config: Config;
     return reply.code(201).send({ user });
   });
 
-  app.post('/auth/login', async (req, reply) => {
+  app.post('/auth/login', { config: authLimit }, async (req, reply) => {
     const { email, password } = Credentials.parse(req.body);
     const { rows } = await db.query<AuthUser & { password_hash: string }>(
       'SELECT id, email, password_hash FROM users WHERE email = $1',

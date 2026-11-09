@@ -12,6 +12,7 @@ export function createEmbedder(config: Config): Embedder {
         apiKey: config.GEMINI_API_KEY!, // presence enforced by config validation
         model: config.EMBEDDING_MODEL,
         dimensions: config.EMBEDDING_DIM,
+        requestsPerMinute: config.EMBED_REQUESTS_PER_MIN,
       });
     case 'fake':
       return new FakeEmbedder(config.EMBEDDING_DIM);

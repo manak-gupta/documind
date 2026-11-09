@@ -88,6 +88,10 @@ describe('chat', () => {
     assert.equal(detail.conversation.title, 'How many layers does the encoder have?');
     assert.deepEqual(detail.messages.map((m: { role: string }) => m.role), ['user', 'assistant']);
     assert.equal(detail.messages[1].citations.length, 1);
+    // The trace is stored with the answer, so "Why this answer?" survives a reload.
+    assert.ok(detail.messages[1].trace.chunks.length > 0);
+    assert.equal(detail.messages[1].trace.rejectedCitations, 1);
+    assert.equal(detail.messages[0].trace, null);
 
     const log = (await pool.query('SELECT citations_rejected, provider, total_ms FROM query_logs WHERE user_id = $1', [me.id])).rows[0];
     assert.equal(log.citations_rejected, 1);
@@ -124,6 +128,62 @@ describe('chat', () => {
     assert.equal((await ask(stranger, conv.id, 'Show me their data')).statusCode, 404);
     assert.equal((await app.inject({ method: 'GET', url: `/conversations/${conv.id}`, cookies: stranger })).statusCode, 404);
     assert.equal((await app.inject({ method: 'DELETE', url: `/conversations/${conv.id}`, cookies: stranger })).statusCode, 404);
+  });
+
+  test('a repeated first question is served from the cache with no LLM call', async () => {
+    const { cookies } = await setup();
+    const newConv = async () => (await app.inject({ method: 'POST', url: '/conversations', cookies })).json().conversation.id;
+    const first = parseSse((await ask(cookies, await newConv(), 'How many layers does the encoder have?')).body).at(-1)!.data;
+    const calls = llm.requests.length;
+    const second = parseSse((await ask(cookies, await newConv(), '  how many layers does the ENCODER have  ')).body).at(-1)!.data;
+
+    assert.equal(first.cacheHit, false);
+    assert.equal(second.cacheHit, true, 'normalized question hits the cache');
+    assert.equal(second.answer, first.answer);
+    assert.equal(llm.requests.length, calls, 'no LLM call for a cache hit');
+  });
+
+  test('uploading a new document changes the cache key, so stale answers are never served', async () => {
+    const { cookies, me } = await setup();
+    const newConv = async () => (await app.inject({ method: 'POST', url: '/conversations', cookies })).json().conversation.id;
+    await ask(cookies, await newConv(), 'What optimizer was used?');
+    await seedDocument(pool, me.id, 'Another paper', ['A different optimizer called Lion was used here.']);
+    const after = parseSse((await ask(cookies, await newConv(), 'What optimizer was used?')).body).at(-1)!.data;
+    assert.equal(after.cacheHit, false);
+  });
+
+  test('follow-up questions are never served from the cache', async () => {
+    const { cookies, conv } = await setup();
+    await ask(cookies, conv.id, 'How many layers does the encoder have?');
+    await ask(cookies, conv.id, 'And the decoder?');
+    const again = parseSse((await ask(cookies, conv.id, 'And the decoder?')).body).at(-1)!.data;
+    assert.equal(again.cacheHit, false);
+  });
+
+  test('per-user rate limit and daily token budget return 429 before any streaming', async () => {
+    const strict = await buildApp(testConfig({ ASK_RATE_LIMIT_PER_MIN: 2, DAILY_TOKEN_BUDGET: 5_000 }), { db: pool, embedder: new FakeEmbedder(), llm });
+    const cookies = await signUp(strict);
+    const me = (await strict.inject({ method: 'GET', url: '/me', cookies })).json().user;
+    const conv = (await strict.inject({ method: 'POST', url: '/conversations', cookies })).json().conversation;
+    const askStrict = (q: string) => strict.inject({ method: 'POST', url: `/conversations/${conv.id}/ask`, cookies, payload: { question: q } });
+
+    await askStrict('first question here');
+    await askStrict('second question here');
+    const limited = await askStrict('third question here');
+    assert.equal(limited.statusCode, 429);
+    assert.equal(limited.json().error, 'rate_limited');
+
+    await pool.query(`UPDATE query_logs SET created_at = now() - interval '2 minutes' WHERE user_id = $1`, [me.id]);
+    await pool.query(`INSERT INTO query_logs (user_id, input_tokens, output_tokens) VALUES ($1, 4000, 2000)`, [me.id]);
+    const overBudget = await askStrict('fourth question here');
+    assert.equal(overBudget.statusCode, 429);
+    assert.equal(overBudget.json().error, 'budget_exceeded');
+
+    const metrics = (await strict.inject({ method: 'GET', url: '/metrics/summary', cookies })).json();
+    assert.equal(metrics.questions7d, 3);
+    assert.ok(metrics.tokensToday >= 6000);
+    assert.equal(metrics.dailyTokenBudget, 5_000);
+    await strict.close();
   });
 
   test('invalid questions are rejected before any streaming starts', async () => {
