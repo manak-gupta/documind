@@ -11,6 +11,7 @@ export interface AnswerDeps {
   embedder: Embedder;
   llm: LlmProvider;
   abstainSimilarity: number;
+  keywordWeight?: number; // weighted RRF (see retrieval/hybrid.ts)
 }
 
 export interface AskInput {
@@ -57,7 +58,7 @@ export async function* answerQuestion(deps: AnswerDeps, input: AskInput): AsyncG
   // 2. Retrieve.
   yield { type: 'status', stage: 'retrieving' };
   const search = await hybridSearch(deps.db, deps.embedder, {
-    userId: input.userId, query: searchQuery, documentIds: input.documentIds,
+    userId: input.userId, query: searchQuery, documentIds: input.documentIds, keywordWeight: deps.keywordWeight,
   });
   const retrievalMs = since() - rewriteMs;
   const chunks = search.chunks;

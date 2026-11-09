@@ -23,6 +23,7 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     LLM_FAST_MODEL: 'fake-model',
     LLM_THINKING: 'off',
     ABSTAIN_SIMILARITY: 0.05, // fake embeddings have low similarities; tests set it when testing abstention
+    RRF_KEYWORD_WEIGHT: 1,
     ASK_RATE_LIMIT_PER_MIN: 1000,
     DAILY_TOKEN_BUDGET: 10_000_000,
     AUTH_RATE_LIMIT_PER_MIN: 10_000,

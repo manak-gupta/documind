@@ -23,6 +23,7 @@ export interface ChatDeps {
   llm: LlmProvider;
   abstainSimilarity: number;
   limits: Limits;
+  keywordWeight?: number;
 }
 
 interface Trace {

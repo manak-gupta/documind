@@ -11,6 +11,7 @@
     "migrate": "node --env-file-if-exists=../../.env src/db/migrate.ts",
     "eval:generate": "node --env-file-if-exists=../../.env eval/generate.ts",
     "eval": "node --env-file-if-exists=../../.env eval/run.ts",
+    "eval:all": "node --env-file-if-exists=../../.env eval/all.ts",
     "typecheck": "tsc",
     "test": "node --test \"src/**/*.test.ts\""
   },

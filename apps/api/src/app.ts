@@ -45,10 +45,11 @@ export async function buildApp(config: Config, deps: Deps) {
   // Registered as an encapsulated plugin on purpose: its requireAuth hook applies to its routes only.
   await app.register(documentRoutes, { config, db: deps.db, events: deps.events ?? noEvents });
   const embedder = deps.embedder ?? createEmbedder(config);
-  await app.register(searchRoutes, { db: deps.db, embedder });
+  await app.register(searchRoutes, { db: deps.db, embedder, keywordWeight: config.RRF_KEYWORD_WEIGHT });
   const limits = { askRatePerMin: config.ASK_RATE_LIMIT_PER_MIN, dailyTokenBudget: config.DAILY_TOKEN_BUDGET };
   await app.register(chatRoutes, {
     db: deps.db, embedder, llm: deps.llm ?? createLlm(config), abstainSimilarity: config.ABSTAIN_SIMILARITY, limits,
+    keywordWeight: config.RRF_KEYWORD_WEIGHT,
   });
   await app.register(metricsRoutes, { db: deps.db, limits });
 

@@ -29,6 +29,8 @@ const EnvSchema = z.object({
   // Below this best-match similarity we answer "not in your documents" without calling the LLM.
   // Measured on the Attention paper: off-topic 0.54, real questions 0.78-0.84.
   ABSTAIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.6),
+  // Weighted RRF: how much keyword ranks count relative to vector ranks (tuned by the eval).
+  RRF_KEYWORD_WEIGHT: z.coerce.number().min(0).max(2).default(1),
 
   // Abuse and cost guards
   ASK_RATE_LIMIT_PER_MIN: z.coerce.number().int().min(1).default(20),

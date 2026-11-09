@@ -32,6 +32,7 @@ const { values: args } = parseArgs({
     'pause-ms': { type: 'string', default: '2000' },
     'keyword-weights': { type: 'string', default: '1' },  // e.g. "1,0.5,0.25" for a weighted-RRF sweep
     'reuse-index': { type: 'boolean', default: false },   // skip re-embedding if this config is already indexed
+    'answer-keyword-weight': { type: 'string' },          // RRF keyword weight for the answer run (default: config)
   },
 });
 const keywordWeights = args['keyword-weights']!.split(',').map(Number);
@@ -44,6 +45,7 @@ const modes = args.modes!.split(',') as ('hybrid' | 'vector' | 'keyword')[];
 
 const config = loadConfig();
 const pool = createPool(config.DATABASE_URL);
+const answerKeywordWeight = args['answer-keyword-weight'] ? Number(args['answer-keyword-weight']) : config.RRF_KEYWORD_WEIGHT;
 
 // Every config asks the same 40 questions: query embeddings are cached ON DISK, so they're
 // computed once ever, not once per run. (The free tier's daily embedding quota ran out during
@@ -76,19 +78,24 @@ console.log(`\n== ${name}: chunk ${chunkSize} tokens, overlap ${overlap} ==`);
 const docIds = new Map<string, string>();
 const evalDocs = await loadDocs();
 
-// Reuse an existing complete index for this chunking config (documents are matched by title).
-const { rows: existing } = await pool.query<{ id: string; title: string }>(
-  `SELECT id, title FROM documents WHERE user_id = $1 AND status = 'ready'`, [userId]);
-const reusable = args['reuse-index'] && evalDocs.every((d) => existing.some((e) => e.title === d.title));
-if (reusable) {
-  for (const d of evalDocs) docIds.set(d.id, existing.find((e) => e.title === d.title)!.id);
-  console.log('  reusing existing index');
+// --reuse-index keeps every document already indexed for this config and only indexes the
+// missing ones. Documents are matched by FILE NAME: ingestion replaces the title with the PDF's
+// own title, so matching by title silently failed (and the old code then deleted the index).
+const { rows: existing } = await pool.query<{ id: string; filename: string }>(
+  `SELECT id, filename FROM documents WHERE user_id = $1 AND status = 'ready'`, [userId]);
+if (args['reuse-index']) {
+  for (const d of evalDocs) {
+    const found = existing.find((e) => e.filename === `${d.id}.pdf`);
+    if (found) docIds.set(d.id, found.id);
+  }
+  await pool.query(`DELETE FROM documents WHERE user_id = $1 AND status <> 'ready'`, [userId]); // half-done leftovers
+  console.log(`  reusing ${docIds.size}/${evalDocs.length} indexed documents`);
 } else {
   await pool.query('DELETE FROM documents WHERE user_id = $1', [userId]); // fresh index
 }
 
 await mkdir(config.UPLOAD_DIR, { recursive: true });
-for (const doc of reusable ? [] : evalDocs) {
+for (const doc of evalDocs.filter((d) => !docIds.has(d.id))) {
   const storageKey = `eval-${randomUUID()}.pdf`;
   await copyFile(await fetchDoc(doc), join(config.UPLOAD_DIR, storageKey));
   const { rows: [d] } = await pool.query<{ id: string }>(
@@ -149,7 +156,7 @@ if (args.answers) {
   });
   for (const [i, item] of dataset.entries()) {
     let result: AnswerResult | null = null;
-    for await (const e of answerQuestion({ db: pool, embedder, llm, abstainSimilarity: config.ABSTAIN_SIMILARITY },
+    for await (const e of answerQuestion({ db: pool, embedder, llm, abstainSimilarity: config.ABSTAIN_SIMILARITY, keywordWeight: answerKeywordWeight },
       { userId, question: item.question, history: [] })) {
       if (e.type === 'done') result = e.result;
     }
@@ -200,7 +207,7 @@ if (args.answers) {
 // ---------- 4. Save ----------
 const out = {
   name, date: new Date().toISOString(),
-  config: { chunkSize, overlap, thinking: args.answers ? thinking : null, llm: config.LLM_MODEL, embeddings: config.EMBEDDING_MODEL, abstainSimilarity: config.ABSTAIN_SIMILARITY },
+  config: { chunkSize, overlap, thinking: args.answers ? thinking : null, answerKeywordWeight: args.answers ? answerKeywordWeight : null, llm: config.LLM_MODEL, embeddings: config.EMBEDDING_MODEL, abstainSimilarity: config.ABSTAIN_SIMILARITY },
   dataset: { total: dataset.length, answerable: answerable.length, unanswerable: dataset.length - answerable.length, chunksIndexed: idx!.n },
   retrieval, answers, ranks, rows,
 };
