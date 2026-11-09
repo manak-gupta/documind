@@ -35,7 +35,9 @@ const STAGE_TEXT: Record<string, string> = {
 };
 
 export function ChatView({ conversationId, documentIds, hasReadyDocuments, createConversation, onOpenSource }: Props) {
-  const { data, isPending } = useQuery({
+  // isLoading, not isPending: on "/" there's no conversation, so the query is disabled, and a
+  // disabled query reports isPending forever, which hid the empty state (found by the e2e test).
+  const { data, isLoading } = useQuery({
     queryKey: ['conversation', conversationId],
     queryFn: () => api.getConversation(conversationId!),
     enabled: !!conversationId,
@@ -87,9 +89,9 @@ export function ChatView({ conversationId, documentIds, hasReadyDocuments, creat
     <div className="flex h-full flex-col">
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl space-y-8 px-4 py-8 sm:px-6">
-          {conversationId && isPending && <div className="flex justify-center"><Spinner className="size-5 text-zinc-400" /></div>}
+          {isLoading && <div className="flex justify-center"><Spinner className="size-5 text-zinc-400" /></div>}
 
-          {empty && !isPending && (
+          {empty && !isLoading && (
             <EmptyState hasDocuments={hasReadyDocuments} onPick={(s) => void send(s)} scoped={documentIds.length} />
           )}
 

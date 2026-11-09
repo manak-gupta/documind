@@ -7,7 +7,8 @@
 // document and its page range includes a gold page. Answers are graded by an LLM judge against
 // the reference answer; unanswerable questions must be declined.
 import { randomUUID } from 'node:crypto';
-import { copyFile, mkdir, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadConfig } from '../src/config.ts';
@@ -18,7 +19,7 @@ import type { Embedder } from '../src/llm/embedder.ts';
 import { GeminiLlm } from '../src/llm/gemini.ts';
 import { hybridSearch } from '../src/retrieval/hybrid.ts';
 import { answerQuestion, type AnswerResult } from '../src/chat/answer.ts';
-import { EVAL_DIR, type EvalItem, fetchDoc, geminiJson, loadDataset, loadDocs, pagesOverlap, percentile, sleep } from './shared.ts';
+import { CACHE_DIR, EVAL_DIR, type EvalItem, fetchDoc, geminiJson, loadDataset, loadDocs, pagesOverlap, percentile, sleep } from './shared.ts';
 
 const { values: args } = parseArgs({
   options: {
@@ -44,15 +45,23 @@ const modes = args.modes!.split(',') as ('hybrid' | 'vector' | 'keyword')[];
 const config = loadConfig();
 const pool = createPool(config.DATABASE_URL);
 
-// Every config asks the same 40 questions: cache query embeddings so each is computed once.
+// Every config asks the same 40 questions: query embeddings are cached ON DISK, so they're
+// computed once ever, not once per run. (The free tier's daily embedding quota ran out during
+// development; this makes re-running the eval nearly free.)
 const base = createEmbedder(config);
-const queryCache = new Map<string, number[]>();
+const cacheFile = join(CACHE_DIR, `query-embeddings-${base.model}-${base.dimensions}.json`);
+const queryCache = new Map<string, number[]>(
+  existsSync(cacheFile) ? Object.entries(JSON.parse(await readFile(cacheFile, 'utf8')) as Record<string, number[]>) : []);
 const embedder: Embedder = {
   model: base.model,
   dimensions: base.dimensions,
   embedDocuments: (t) => base.embedDocuments(t),
   embedQuery: async (q) => {
-    if (!queryCache.has(q)) queryCache.set(q, await base.embedQuery(q));
+    if (!queryCache.has(q)) {
+      queryCache.set(q, await base.embedQuery(q));
+      await mkdir(CACHE_DIR, { recursive: true });
+      await writeFile(cacheFile, JSON.stringify(Object.fromEntries(queryCache)));
+    }
     return queryCache.get(q)!;
   },
 };

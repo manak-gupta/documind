@@ -7,6 +7,7 @@
     "start": "node src/server.ts",
     "worker": "node --watch --env-file-if-exists=../../.env src/worker.ts",
     "start:worker": "node src/worker.ts",
+    "demo": "node src/all-in-one.ts --demo",
     "migrate": "node --env-file-if-exists=../../.env src/db/migrate.ts",
     "eval:generate": "node --env-file-if-exists=../../.env eval/generate.ts",
     "eval": "node --env-file-if-exists=../../.env eval/run.ts",

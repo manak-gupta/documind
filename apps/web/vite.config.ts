@@ -11,7 +11,7 @@ export default defineConfig({
     // In production, Caddy does the same job (see the Caddyfile).
     proxy: {
       '/api': {
-        target: 'http://localhost:4000',
+        target: process.env.API_URL ?? 'http://localhost:4000', // the e2e tests use their own API port
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
     },
