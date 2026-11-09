@@ -3,14 +3,20 @@
   "private": true,
   "description": "Ask questions across your PDFs and get answers cited to document, page and passage.",
   "workspaces": [
-    "apps/*",
-    "packages/*"
+    "apps/*"
   ],
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "scripts": {
     "db:up": "docker compose up -d db",
-    "db:down": "docker compose down"
+    "db:down": "docker compose down",
+    "migrate": "npm run migrate -w @documind/api",
+    "dev:api": "npm run dev -w @documind/api",
+    "dev:worker": "npm run worker -w @documind/api",
+    "dev:web": "npm run dev -w @documind/web",
+    "typecheck": "npm run typecheck --workspaces",
+    "test": "npm test --workspaces",
+    "build": "npm run build -w @documind/web"
   }
 }

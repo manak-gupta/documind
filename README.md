@@ -17,8 +17,21 @@ Click a citation and the PDF opens at the highlighted passage.
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design and the reasoning behind each decision.
 
 ## Run locally
+Requires Node.js 24+ (runs TypeScript natively) and Docker.
+
 ```bash
-cp .env.example .env      # add API keys
-npm run db:up             # Postgres + pgvector in Docker
+cp .env.example .env      # add a free Gemini key from https://aistudio.google.com
+npm install
+npm run db:up             # Postgres 17 + pgvector in Docker
+npm run migrate           # create the schema
+
+# three terminals:
+npm run dev:api           # API      http://localhost:4000
+npm run dev:worker        # ingestion worker (parsing, chunking, embedding)
+npm run dev:web           # web app  http://localhost:5173
 ```
-More steps will be added as the app is built.
+
+```bash
+npm test                  # API + web tests (needs the database running)
+npm run typecheck
+```
