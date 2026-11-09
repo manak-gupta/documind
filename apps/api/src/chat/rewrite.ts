@@ -31,6 +31,9 @@ export async function rewriteQuestion(
     return rewritten && rewritten.length <= 500 ? rewritten : question;
   } catch (err) {
     if (signal?.aborted) throw err;
-    return question; // rewriting is an optimization; never fail the whole answer over it
+    // Rewriting is an optimization, so never fail the whole answer over it. But do log it:
+    // a silent fallback once hid a bug where EVERY rewrite was failing.
+    console.warn(JSON.stringify({ level: 'warn', msg: 'question rewrite failed; using the original question', err: (err as Error).message }));
+    return question;
   }
 }

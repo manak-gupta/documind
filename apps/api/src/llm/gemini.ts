@@ -30,8 +30,12 @@ export class GeminiLlm implements LlmProvider {
   async *stream(req: GenerateRequest): AsyncIterable<StreamEvent> {
     const fast = req.tier === 'fast';
     const model = fast ? this.opts.fastModel : this.opts.model;
-    // Thinking runs before the first visible token, so it adds latency. Helper calls skip it.
-    const thinking: Thinking = fast ? 'off' : this.opts.thinking;
+    // Thinking runs before the first visible token, so it adds latency.
+    // Fast tier: send no thinking setting at all. Flash-lite doesn't think by default and
+    // REJECTS thinkingBudget: 0 with a 400 (found by the eval; it had silently broken rewrites).
+    const thinkingConfig = fast
+      ? undefined
+      : this.opts.thinking === 'off' ? { thinkingBudget: 0 } : { thinkingLevel: this.opts.thinking };
 
     const res = await fetchWithRetry(
       `${BASE}/models/${model}:streamGenerateContent?alt=sse`,
@@ -46,7 +50,7 @@ export class GeminiLlm implements LlmProvider {
           })),
           generationConfig: {
             maxOutputTokens: req.maxOutputTokens ?? 2048,
-            thinkingConfig: thinking === 'off' ? { thinkingBudget: 0 } : { thinkingLevel: thinking },
+            ...(thinkingConfig && { thinkingConfig }),
           },
         }),
         signal: req.signal,
