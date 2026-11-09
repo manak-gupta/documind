@@ -24,7 +24,13 @@ export interface SearchOptions {
   candidates?: number;     // how deep each list goes before fusion
   // Ablation switch for the eval: turn off one of the two retrievers.
   mode?: 'hybrid' | 'vector' | 'keyword';
+  // Weighted RRF: how much a keyword rank counts relative to a vector rank (1 = equal).
+  keywordWeight?: number;
 }
+
+// Chosen by the eval (eval/README.md): keyword matches rescue exact-term questions, but at equal
+// weight they pushed good semantic hits down from rank 1.
+export const DEFAULT_KEYWORD_WEIGHT = 1;
 
 export interface SearchResult {
   chunks: RetrievedChunk[];
@@ -75,7 +81,7 @@ kw AS (
 fused AS (
   SELECT coalesce(vec.id, kw.id) AS id,
          vec.rnk AS vector_rank, kw.rnk AS keyword_rank, vec.similarity,
-         coalesce(1.0 / (${RRF_K} + vec.rnk), 0) + coalesce(1.0 / (${RRF_K} + kw.rnk), 0) AS score
+         coalesce(1.0 / (${RRF_K} + vec.rnk), 0) + $9::float8 * coalesce(1.0 / (${RRF_K} + kw.rnk), 0) AS score
     FROM vec FULL OUTER JOIN kw ON vec.id = kw.id
 )
 SELECT f.id::text, c.document_id AS "documentId", d.title AS "documentTitle", c.ordinal,
@@ -102,6 +108,7 @@ export async function hybridSearch(db: Db, embedder: Embedder, opts: SearchOptio
     opts.limit ?? 8,
     (opts.mode ?? 'hybrid') !== 'keyword', // use the vector list?
     (opts.mode ?? 'hybrid') !== 'vector',  // use the keyword list?
+    opts.keywordWeight ?? DEFAULT_KEYWORD_WEIGHT,
   ]);
   const t2 = performance.now();
 

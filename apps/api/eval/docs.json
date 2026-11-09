@@ -1,0 +1,6 @@
+[
+  { "id": "attention", "title": "Attention Is All You Need", "url": "https://arxiv.org/pdf/1706.03762v7" },
+  { "id": "bert", "title": "BERT: Pre-training of Deep Bidirectional Transformers", "url": "https://arxiv.org/pdf/1810.04805v2" },
+  { "id": "rag", "title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks", "url": "https://arxiv.org/pdf/2005.11401v4" },
+  { "id": "nist-ai-rmf", "title": "NIST AI Risk Management Framework 1.0", "url": "https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.100-1.pdf" }
+]

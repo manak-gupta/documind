@@ -20,6 +20,8 @@ export interface RetryOptions {
   timeoutMs?: number;
   fetchImpl?: typeof fetch;                    // injectable for tests
   sleep?: (ms: number) => Promise<void>;       // injectable for tests
+  maxServerDelayMs?: number;                   // never wait longer than this, whatever the server asks
+  onRetry?: (info: { attempt: number; delayMs: number; reason: string }) => void;
 }
 
 const RETRYABLE = new Set([429, 500, 502, 503, 504]);
@@ -39,6 +41,8 @@ export async function fetchWithRetry(url: string, init: RequestInit, opts: Retry
     timeoutMs = 30_000,
     fetchImpl = fetch,
     sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+    maxServerDelayMs = 120_000,
+    onRetry = defaultOnRetry,
   } = opts;
 
   for (let attempt = 0; ; attempt++) {
@@ -50,7 +54,9 @@ export async function fetchWithRetry(url: string, init: RequestInit, opts: Retry
     } catch (err) {
       // Network failure or timeout. A deliberate cancel is never retried.
       if (callerSignal?.aborted || attempt >= retries) throw err;
-      await sleep(backoff(attempt, baseDelayMs));
+      const delayMs = backoff(attempt, baseDelayMs);
+      onRetry({ attempt: attempt + 1, delayMs, reason: (err as Error).message });
+      await sleep(delayMs);
       continue;
     }
 
@@ -60,9 +66,19 @@ export async function fetchWithRetry(url: string, init: RequestInit, opts: Retry
     if (!RETRYABLE.has(res.status) || attempt >= retries) {
       throw new ApiError(res.status, `HTTP ${res.status}: ${body.slice(0, 500)}`);
     }
-    await sleep(serverDelayMs(res, body) ?? backoff(attempt, baseDelayMs));
+    const delayMs = serverDelayMs(res, body) ?? backoff(attempt, baseDelayMs);
+    // A huge requested delay (e.g. a daily quota) means "not today": fail clearly instead of
+    // silently hanging a job for an hour. (Found when an eval run stalled with no output.)
+    if (delayMs > maxServerDelayMs) {
+      throw new ApiError(res.status, `HTTP ${res.status}: server asked to retry in ${Math.round(delayMs / 1000)} s; giving up. ${body.slice(0, 300)}`);
+    }
+    onRetry({ attempt: attempt + 1, delayMs, reason: `HTTP ${res.status}` });
+    await sleep(delayMs);
   }
 }
+
+const defaultOnRetry = ({ attempt, delayMs, reason }: { attempt: number; delayMs: number; reason: string }) =>
+  console.warn(JSON.stringify({ level: 'warn', msg: 'retrying AI API call', attempt, delayMs: Math.round(delayMs), reason }));
 
 // How long the server asked us to wait, if it said: the standard Retry-After header, or
 // Google's RetryInfo in the error body ("retryDelay": "37s"). Quota windows are often a full

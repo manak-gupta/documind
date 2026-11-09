@@ -13,8 +13,14 @@ function scripted(responses: (Response | Error)[]) {
     if (next instanceof Error) throw next;
     return next;
   }) as typeof fetch;
-  return { fetchImpl, sleep: async (ms: number) => void sleeps.push(ms), calls, sleeps };
+  return { fetchImpl, sleep: async (ms: number) => void sleeps.push(ms), calls, sleeps, onRetry: () => {} };
 }
+
+test('gives up immediately when the server asks for an unreasonably long wait (daily quota)', async () => {
+  const s = scripted([json(429, { error: { details: [{ retryDelay: '3600s' }] } })]);
+  await assert.rejects(fetchJsonWithRetry('http://x', {}, s), /retry in 3601 s; giving up/);
+  assert.deepEqual(s.sleeps, [], 'did not sleep for an hour');
+});
 
 const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers });
