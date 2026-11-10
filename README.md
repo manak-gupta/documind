@@ -37,21 +37,34 @@ with the passage highlighted.
 40 questions over 4 public PDFs (*Attention Is All You Need*, *BERT*, *RAG*, *NIST AI RMF*):
 26 generated from sampled passages, 8 hand-written with verified page numbers, 6 unanswerable.
 
-**Retrieval:** is a passage from the correct page in the top *k*? (34 answerable questions)
+**Answers** (default configuration: `gemini-3.5-flash-lite`, 400-token chunks, weighted hybrid search)
 
-| Chunk size | Mode | Recall@1 | Recall@3 | Recall@8 | MRR |
-|---|---|---|---|---|---|
-| 400 tokens | Hybrid (RRF) | 76.5% | **97.1%** | **100%** | 0.865 |
-| 400 tokens | Vector only | **88.2%** | 94.1% | **100%** | **0.926** |
-| 400 tokens | Keyword only | 64.7% | 79.4% | 97.1% | 0.745 |
-| 200 tokens | Hybrid (RRF) | 76.5% | **100%** | **100%** | 0.873 |
-| 200 tokens | Vector only | 82.4% | **100%** | **100%** | 0.897 |
-| 200 tokens | Keyword only | 55.9% | 73.5% | 100% | 0.687 |
+| Metric | Result |
+|---|---|
+| Answer accuracy (LLM-judged against reference answers) | **97.1%** (33/34) |
+| Unanswerable questions correctly declined | **100%** (6/6) |
+| Answers citing a correct page | 87.9% |
+| Citation precision | 88.9%, with **5 unsupported citations caught and removed** by the verifier |
+| Time to first token / full answer (median) | **1.6 s / 2.1 s** |
 
-**Takeaways.** The right passage is in the 8 chunks sent to the LLM for **every** answerable
-question. Equal-weight fusion helps Recall@3 but costs rank-1 precision against vector-only search,
-because the keyword list demotes good semantic hits, so the fusion is *weighted* (`keywordWeight`)
-and tuned on this set.
+**Retrieval:** is a passage from the correct page in the top *k*? (34 answerable questions, 400-token chunks)
+
+| Mode | Recall@1 | Recall@3 | Recall@8 | MRR |
+|---|---|---|---|---|
+| Hybrid, equal-weight RRF | 73.5% | 97.1% | 100% | 0.849 |
+| **Hybrid, keyword weight 0.5 (default)** | **85.3%** | **97.1%** | **100%** | **0.914** |
+| Vector only | 88.2% | 94.1% | 100% | 0.926 |
+| Keyword only | 64.7% | 82.4% | 94.1% | 0.748 |
+
+**What the eval decided:**
+- **Weighted fusion.** At equal weights the keyword list pushed good semantic hits down from rank 1.
+  Halving its weight lifted Recall@1 from 73.5% to 85.3% while keeping hybrid's Recall@3 advantage
+  over vector-only (97.1% vs 94.1%), which matters for exact terms like model names and numbers.
+- **Model.** `flash-lite` answers in about 2 s (vs 6–20 s for `flash` with thinking) at 97% accuracy,
+  and its free-tier quota is far larger, which matters for a public demo.
+- **Chunk size.** 200-token chunks retrieved slightly better at rank 3 but cost more embeddings;
+  400 tokens is the default.
+- The p95 latency (~50 s) is free-tier rate limiting, not the model; a paid tier removes it.
 
 Method, dataset and limitations: [apps/api/eval/README.md](apps/api/eval/README.md).
 

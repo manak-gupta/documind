@@ -3,7 +3,7 @@ import { type GenerateRequest, type LlmProvider, type StreamEvent, collect } fro
 
 const BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
-export type Thinking = 'off' | 'low' | 'high';
+export type Thinking = 'default' | 'off' | 'low' | 'high';
 
 interface GeminiChunk {
   candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] }; finishReason?: string }[];
@@ -33,7 +33,9 @@ export class GeminiLlm implements LlmProvider {
     // Thinking runs before the first visible token, so it adds latency.
     // Fast tier: send no thinking setting at all. Flash-lite doesn't think by default and
     // REJECTS thinkingBudget: 0 with a 400 (found by the eval; it had silently broken rewrites).
-    const thinkingConfig = fast
+    // 'default' sends nothing (the model's own default; required for lite models, which reject
+    // thinking settings).
+    const thinkingConfig = fast || this.opts.thinking === 'default'
       ? undefined
       : this.opts.thinking === 'off' ? { thinkingBudget: 0 } : { thinkingLevel: this.opts.thinking };
 

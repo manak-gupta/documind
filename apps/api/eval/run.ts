@@ -39,7 +39,7 @@ const keywordWeights = args['keyword-weights']!.split(',').map(Number);
 
 const chunkSize = Number(args['chunk-size']);
 const overlap = args.overlap ? Number(args.overlap) : Math.round(chunkSize * 0.15);
-const thinking = args.thinking as 'off' | 'low' | 'high';
+const thinking = args.thinking as 'default' | 'off' | 'low' | 'high';
 const name = args.name ?? `c${chunkSize}${args.answers ? `-answers-thinking-${thinking}` : '-retrieval'}`;
 const modes = args.modes!.split(',') as ('hybrid' | 'vector' | 'keyword')[];
 

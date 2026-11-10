@@ -23,14 +23,14 @@ const EnvSchema = z.object({
   EMBEDDING_DIM: z.coerce.number().int().default(768),
   // Client-side pacing to stay under the provider quota (Gemini free tier: 100/min, counted per text).
   EMBED_REQUESTS_PER_MIN: z.coerce.number().int().min(1).default(90),
-  LLM_MODEL: z.string().default('gemini-3.5-flash'),
+  LLM_MODEL: z.string().default('gemini-3.5-flash-lite'), // chosen by the eval: 97% accuracy, ~2 s answers
   LLM_FAST_MODEL: z.string().default('gemini-3.5-flash-lite'),
-  LLM_THINKING: z.enum(['off', 'low', 'high']).default('low'),
+  LLM_THINKING: z.enum(['default', 'off', 'low', 'high']).default('default'),
   // Below this best-match similarity we answer "not in your documents" without calling the LLM.
   // Measured on the Attention paper: off-topic 0.54, real questions 0.78-0.84.
   ABSTAIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.6),
   // Weighted RRF: how much keyword ranks count relative to vector ranks (tuned by the eval).
-  RRF_KEYWORD_WEIGHT: z.coerce.number().min(0).max(2).default(1),
+  RRF_KEYWORD_WEIGHT: z.coerce.number().min(0).max(2).default(0.5), // eval: MRR 0.849 -> 0.914
 
   // Abuse and cost guards
   ASK_RATE_LIMIT_PER_MIN: z.coerce.number().int().min(1).default(20),
